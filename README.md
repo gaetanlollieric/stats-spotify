@@ -1,1 +1,1 @@
-# mes-stats-spotify-gl
+# mes-stats-spotify
