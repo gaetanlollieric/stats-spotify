@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>Mon Spotify Stats (Live DB)</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- On ajoute la librairie Supabase pour JS -->
+    <!-- Librairie Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
@@ -18,7 +18,7 @@
             font-family: 'Circular', sans-serif; background-color: var(--bg-dark);
             color: var(--spotify-white); margin: 0; padding: 20px; min-height: 100vh;
         }
-        .container { max-width: 1000px; margin: 0 auto; }
+        .container { max-width: 1100px; margin: 0 auto; }
         h1, h2 { color: var(--spotify-green); text-align: center; }
         
         /* Stats Cards */
@@ -34,14 +34,17 @@
         .big-stat { font-size: 2.5rem; font-weight: bold; margin: 10px 0; }
         .stat-label { color: #b3b3b3; font-size: 0.9rem; }
 
-        /* Table pour les écoutes précises */
+        /* Table & Lists */
         .track-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
         .track-table th { text-align: left; color: #888; padding: 10px; border-bottom: 1px solid #333; }
         .track-table td { padding: 10px; border-bottom: 1px solid #222; }
-        .count-badge { 
-            background: #333; padding: 2px 8px; border-radius: 10px; 
-            font-size: 0.8rem; color: var(--spotify-green); font-weight: bold;
-        }
+        .count-badge { background: #333; padding: 2px 8px; border-radius: 10px; font-size: 0.8rem; color: var(--spotify-green); font-weight: bold; }
+        
+        ol { padding-left: 20px; }
+        li { margin-bottom: 8px; color: #ddd; }
+
+        /* Chart Container */
+        .chart-wrapper { height: 350px; width: 100%; }
 
         /* Login */
         #login-section { height: 80vh; display: flex; flex-direction: column; justify-content: center; align-items: center; }
@@ -54,24 +57,23 @@
 </head>
 <body>
 
-    <!-- LOGIN (Toujours nécessaire pour les Tops du moment) -->
+    <!-- LOGIN -->
     <div id="login-section">
         <h1>Spotify Stats & History</h1>
-        <p>Connectez-vous pour voir vos tops et accéder à l'historique complet.</p>
+        <p>Connectez-vous pour voir vos tops et l'analyse complète.</p>
         <button id="login-btn" class="btn-spotify">Se connecter</button>
     </div>
 
     <!-- DASHBOARD -->
     <div id="dashboard" class="container hidden">
         <h1>Tableau de Bord Unifié</h1>
-        <p style="text-align:center; color:#888">Données synchronisées via Supabase</p>
+        <p style="text-align:center; color:#888">Historique synchronisé via Supabase + GitHub Actions</p>
 
         <!-- Section BDD (Supabase) -->
         <div class="stats-grid">
             <div class="card green">
                 <div class="stat-label">Total Titres Enregistrés</div>
                 <div class="big-stat" id="db-total-tracks">Chargement...</div>
-                <p style="font-size:0.8em; color:#666;">Dans votre base de données</p>
             </div>
             <div class="card green">
                 <div class="stat-label">Temps d'écoute Total</div>
@@ -79,36 +81,35 @@
             </div>
         </div>
 
-        <!-- Le Classement par nombre d'écoutes (BDD) -->
-        <h2>🏆 Vos Titres les Plus Écoutés (Historique Réel)</h2>
+        <!-- Graphique Heures (BDD) -->
+        <h2>⏰ Votre Rythme (Heures d'écoute)</h2>
+        <div class="card">
+            <p class="stat-label">Basé sur l'historique complet de la base de données</p>
+            <div class="chart-wrapper">
+                <canvas id="hourlyChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Classement BDD -->
+        <h2>🏆 Top 10 Titres (Historique Réel)</h2>
         <div class="card">
             <table class="track-table">
-                <thead>
-                    <tr>
-                        <th>Titre</th>
-                        <th>Artiste</th>
-                        <th>Écoutes</th>
-                    </tr>
-                </thead>
-                <tbody id="db-top-tracks">
-                    <!-- Rempli par JS -->
-                </tbody>
+                <thead><tr><th>Titre</th><th>Artiste</th><th>Écoutes</th></tr></thead>
+                <tbody id="db-top-tracks"></tbody>
             </table>
         </div>
 
-        <br><br>
-        <hr style="border-color:#333">
-        <br>
+        <br><hr style="border-color:#333"><br>
 
-        <!-- Section API Spotify (Tops du moment) -->
+        <!-- Section API Spotify -->
         <h2>🔥 Vos Tops du Moment (API Spotify)</h2>
         <div class="stats-grid">
             <div class="card">
-                <h3>Top Artistes (4 semaines)</h3>
+                <h3>Top 10 Artistes (4 semaines)</h3>
                 <ol id="api-artists"></ol>
             </div>
             <div class="card">
-                <h3>Top Titres (4 semaines)</h3>
+                <h3>Top 10 Titres (4 semaines)</h3>
                 <ol id="api-tracks"></ol>
             </div>
         </div>
@@ -119,91 +120,115 @@
         const clientId = '1f8e5a30d7d4470aa41dd7ba69e4a94f';
         const redirectUri = 'https://gaetanlollieric.github.io/stats-spotify/index.html';
         
-        // REMPLACEZ CECI PAR VOS INFOS SUPABASE
+        // REMPLACEZ CES DEUX LIGNES :
         const SUPABASE_URL = 'https://kvrwymmsgwstvyqmscuy.supabase.co'; 
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2cnd5bW1zZ3dzdHZ5cW1zY3V5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3NjAxODksImV4cCI6MjA3OTMzNjE4OX0.XNJOD5MzOaM8u_tRuvXZvx2Q_mHUTbk-mAbUFnoU3H4'; 
 
-        // --- 2. INITIALISATION SUPABASE ---
+        // --- 2. INITIALISATION ---
         const { createClient } = supabase;
         const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+        const scopes = 'user-top-read'; 
 
-        // --- 3. GESTION AUTHENTIFICATION SPOTIFY ---
-        const scopes = 'user-top-read'; // On a juste besoin de lire les tops ici
-
-        // PKCE Helpers (inchangé)
-        function generateRandomString(length) {let text='';const possible='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';for(let i=0;i<length;i++)text+=possible.charAt(Math.floor(Math.random()*possible.length));return text;}
-        async function generateCodeChallenge(codeVerifier) {const encoder=new TextEncoder();const data=encoder.encode(codeVerifier);const digest=await window.crypto.subtle.digest('SHA-256',data);return btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/, '');}
+        // PKCE Tools
+        function generateRandomString(l){let t='';const p='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';for(let i=0;i<l;i++)t+=p.charAt(Math.floor(Math.random()*p.length));return t;}
+        async function generateCodeChallenge(v){const e=new TextEncoder();const d=e.encode(v);const dig=await window.crypto.subtle.digest('SHA-256',d);return btoa(String.fromCharCode(...new Uint8Array(dig))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/, '');}
 
         window.addEventListener('load', async () => {
-            // A. Charger les données Supabase (Pas besoin de login Spotify pour ça !)
+            // On charge les stats BDD tout de suite (pas besoin de login)
             loadSupabaseStats();
 
-            // B. Gérer le Login Spotify
+            // On gère le retour de connexion Spotify
             const params = new URLSearchParams(window.location.search);
             const code = params.get("code");
-            if (code) {
-                await handleSpotifyCallback(code);
-            }
+            if (code) { await handleSpotifyCallback(code); }
         });
 
         document.getElementById('login-btn').addEventListener('click', async () => {
-            const verifier = generateRandomString(128);
-            const challenge = await generateCodeChallenge(verifier);
-            localStorage.setItem("verifier", verifier);
-            const params = new URLSearchParams({ client_id: clientId, response_type: "code", redirect_uri: redirectUri, scope: scopes, code_challenge_method: "S256", code_challenge: challenge });
-            document.location = `https://accounts.spotify.com/authorize?${params.toString()}`;
+            const v = generateRandomString(128);
+            const c = await generateCodeChallenge(v);
+            localStorage.setItem("verifier", v);
+            const p = new URLSearchParams({ client_id: clientId, response_type: "code", redirect_uri: redirectUri, scope: scopes, code_challenge_method: "S256", code_challenge: c });
+            document.location = `https://accounts.spotify.com/authorize?${p.toString()}`;
         });
 
-        // --- 4. FONCTIONS SUPABASE (BDD) ---
+        // --- 3. FONCTIONS SUPABASE (BDD) ---
         async function loadSupabaseStats() {
-            console.log("Chargement Supabase...");
+            console.log("Chargement BDD...");
             
-            // 1. Compter total tracks
-            const { count, error } = await sb.from('spotify_history').select('*', { count: 'exact', head: true });
-            if(!error) document.getElementById('db-total-tracks').innerText = count;
+            // On récupère TOUT l'historique (nécessaire pour le graphique horaire)
+            // Note : Si vous avez 100,000 titres un jour, il faudra optimiser cette requête.
+            // Pour l'instant (quelques milliers), c'est instantané.
+            const { data: history, error } = await sb.from('spotify_history').select('played_at, duration_ms, track_name, artist_name');
 
-            // 2. Calculer temps total
-            // Note: Pour faire la somme, le mieux est une "Rpc" SQL, mais on va faire simple : télécharger les durées
-            const { data: durations } = await sb.from('spotify_history').select('duration_ms');
-            if(durations) {
-                let totalMs = durations.reduce((acc, item) => acc + item.duration_ms, 0);
-                let hours = Math.floor(totalMs / 3600000);
-                document.getElementById('db-total-time').innerText = `${hours} heures`;
-            }
+            if (error || !history) { console.error("Erreur Supabase:", error); return; }
 
-            // 3. Le fameux "Nombre d'écoutes par titre"
-            // On récupère tout et on compte en JS (simple pour commencer)
-            const { data: tracks } = await sb.from('spotify_history').select('track_name, artist_name');
-            if(tracks) {
-                // Compter les occurrences
-                const counts = {};
-                tracks.forEach(t => {
-                    const key = `${t.track_name}###${t.artist_name}`;
-                    counts[key] = (counts[key] || 0) + 1;
-                });
+            // A. Stats Globales
+            document.getElementById('db-total-tracks').innerText = history.length;
+            let totalMs = history.reduce((acc, item) => acc + item.duration_ms, 0);
+            let hours = Math.floor(totalMs / 3600000);
+            document.getElementById('db-total-time').innerText = `${hours} heures`;
 
-                // Trier
-                const sorted = Object.entries(counts)
-                    .sort(([,a], [,b]) => b - a)
-                    .slice(0, 10); // Top 10
+            // B. Graphique des Heures
+            renderHourlyChart(history);
 
-                // Afficher
-                const tbody = document.getElementById('db-top-tracks');
-                tbody.innerHTML = '';
-                sorted.forEach(([key, count]) => {
-                    const [name, artist] = key.split('###');
-                    tbody.innerHTML += `
-                        <tr>
-                            <td><strong>${name}</strong></td>
-                            <td>${artist}</td>
-                            <td><span class="count-badge">${count} écoutes</span></td>
-                        </tr>
-                    `;
-                });
-            }
+            // C. Top Titres (Comptage manuel)
+            const counts = {};
+            history.forEach(t => {
+                const key = `${t.track_name}###${t.artist_name}`;
+                counts[key] = (counts[key] || 0) + 1;
+            });
+            
+            const sorted = Object.entries(counts)
+                .sort(([,a], [,b]) => b - a)
+                .slice(0, 10); // Top 10
+
+            const tbody = document.getElementById('db-top-tracks');
+            tbody.innerHTML = '';
+            sorted.forEach(([key, count]) => {
+                const [name, artist] = key.split('###');
+                tbody.innerHTML += `<tr><td><strong>${name}</strong></td><td>${artist}</td><td><span class="count-badge">${count}</span></td></tr>`;
+            });
         }
 
-        // --- 5. FONCTIONS API SPOTIFY ---
+        function renderHourlyChart(history) {
+            // Créer un tableau de 24 cases (0h à 23h) initialisé à 0
+            const hoursBuckets = new Array(24).fill(0);
+            
+            history.forEach(item => {
+                // played_at est au format ISO (ex: 2025-11-21T14:30:00Z)
+                // On crée une date JS et on prend l'heure locale
+                const date = new Date(item.played_at);
+                const hour = date.getHours(); 
+                hoursBuckets[hour]++;
+            });
+
+            const ctx = document.getElementById('hourlyChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar', // ou 'line' selon vos goûts
+                data: {
+                    labels: [...Array(24).keys()].map(h => h + 'h'),
+                    datasets: [{
+                        label: 'Nombre de titres écoutés',
+                        data: hoursBuckets,
+                        backgroundColor: 'rgba(59, 130, 246, 0.6)',
+                        borderColor: '#3b82f6',
+                        borderWidth: 1,
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: '#333' }, ticks: { color: '#fff' } },
+                        x: { grid: { display: false }, ticks: { color: '#fff' } }
+                    }
+                }
+            });
+        }
+
+        // --- 4. FONCTIONS API SPOTIFY ---
         async function handleSpotifyCallback(code) {
             const verifier = localStorage.getItem("verifier");
             const payload = {
@@ -211,10 +236,8 @@
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: new URLSearchParams({ client_id: clientId, grant_type: 'authorization_code', code: code, redirect_uri: redirectUri, code_verifier: verifier }),
             };
-
             const body = await fetch("https://accounts.spotify.com/api/token", payload);
             const response = await body.json();
-            
             if (response.access_token) {
                 window.history.replaceState({}, document.title, window.location.pathname);
                 document.getElementById('login-section').classList.add('hidden');
@@ -226,17 +249,20 @@
         async function loadSpotifyApiStats(token) {
             const headers = { Authorization: `Bearer ${token}` };
             
-            const artistsRes = await fetch(`https://api.spotify.com/v1/me/top/artists?time_range=short_term&limit=5`, { headers });
-            const artists = await artistsRes.json();
+            // On demande 10 items au lieu de 5
+            const [artRes, trkRes] = await Promise.all([
+                fetch(`https://api.spotify.com/v1/me/top/artists?time_range=short_term&limit=10`, { headers }),
+                fetch(`https://api.spotify.com/v1/me/top/tracks?time_range=short_term&limit=10`, { headers })
+            ]);
             
-            const tracksRes = await fetch(`https://api.spotify.com/v1/me/top/tracks?time_range=short_term&limit=5`, { headers });
-            const tracks = await tracksRes.json();
+            const artists = await artRes.json();
+            const tracks = await trkRes.json();
 
-            const artistList = document.getElementById('api-artists');
-            artists.items.forEach(item => artistList.innerHTML += `<li>${item.name}</li>`);
+            const al = document.getElementById('api-artists'); al.innerHTML='';
+            artists.items.forEach(i => al.innerHTML += `<li>${i.name}</li>`);
 
-            const trackList = document.getElementById('api-tracks');
-            tracks.items.forEach(item => trackList.innerHTML += `<li>${item.name} - ${item.artists[0].name}</li>`);
+            const tl = document.getElementById('api-tracks'); tl.innerHTML='';
+            tracks.items.forEach(i => tl.innerHTML += `<li>${i.name} - <span style="color:#3b82f6">${i.artists[0].name}</span></li>`);
         }
     </script>
 </body>
