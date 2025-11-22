@@ -17,6 +17,11 @@ supabase = create_client(SUPA_URL, SUPA_KEY)
 total_tracks_added = 0
 users_processed = []
 
+def normalize_played_at(dt):
+    # Transforme le Z de fin en +00:00 si présent
+    return dt.replace('Z', '+00:00')
+
+
 def process_user(user):
     global total_tracks_added
     print(f"\n--- Traitement de : {user['display_name']} ({user['spotify_id']}) ---")
@@ -54,17 +59,11 @@ def process_user(user):
         print(f"Récupéré {len(tracks)} titres.")
 
         # Comptage des nouveaux titres
-        played_at_list = [item["played_at"] for item in tracks]
+        played_at_list = [normalize_played_at(item["played_at"]) for item in tracks]
         existing = supabase.table("spotify_history").select("played_at").in_("played_at", played_at_list).eq("user_id", user["spotify_id"]).execute()
-        already_in_db = {item["played_at"] for item in existing.data}
+        already_in_db = {normalize_played_at(item["played_at"]) for item in existing.data}
+        new_tracks = [item for item in tracks if normalize_played_at(item["played_at"]) not in already_in_db]
 
-
-        print("played_at depuis Spotify :")
-        print(played_at_list)
-        print("played_at déjà en base :")
-        print(already_in_db)
-
-        new_tracks = [item for item in tracks if item["played_at"] not in already_in_db]
         
         to_insert = []
         for item in new_tracks:
