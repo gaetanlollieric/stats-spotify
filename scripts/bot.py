@@ -58,6 +58,12 @@ def process_user(user):
         existing = supabase.table("spotify_history").select("played_at").in_("played_at", played_at_list).eq("user_id", user["spotify_id"]).execute()
         already_in_db = {item["played_at"] for item in existing.data}
 
+
+        print("played_at depuis Spotify :")
+        print(played_at_list)
+        print("played_at déjà en base :")
+        print(already_in_db)
+
         new_tracks = [item for item in tracks if item["played_at"] not in already_in_db]
         
         to_insert = []
