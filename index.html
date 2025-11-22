@@ -144,7 +144,7 @@
         // --- 2. INITIALISATION ---
         const { createClient } = supabase;
         const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
-        const scopes = 'user-top-read user-read-recently-played'; 
+        const scopes = 'user-top-read user-read-recently-played offline_access'; 
         let currentToken = null; // Pour stocker le token et le réutiliser avec les boutons
 
         // PKCE Tools
@@ -248,24 +248,51 @@
             const payload = {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams({ client_id: clientId, grant_type: 'authorization_code', code: code, redirect_uri: redirectUri, code_verifier: verifier }),
+                body: new URLSearchParams({ 
+                    client_id: clientId, 
+                    grant_type: 'authorization_code', 
+                    code: code, 
+                    redirect_uri: redirectUri, 
+                    code_verifier: verifier 
+                }),
             };
+
             const body = await fetch("https://accounts.spotify.com/api/token", payload);
             const response = await body.json();
+            
             if (response.access_token) {
+                // Nettoyage URL
                 window.history.replaceState({}, document.title, window.location.pathname);
                 document.getElementById('login-section').classList.add('hidden');
                 document.getElementById('dashboard').classList.remove('hidden');
                 
-                currentToken = response.access_token; // On garde le token pour les boutons
-                
-                // Chargement initial (Short Term par défaut)
+                currentToken = response.access_token;
+
+                // 1. Récupérer infos profil
+                const resProfile = await fetch("https://api.spotify.com/v1/me", { headers: { Authorization: `Bearer ${currentToken}` } });
+                const profile = await resProfile.json();
+                currentUserId = profile.id;
+                document.getElementById('user-display-name').innerText = profile.display_name;
+
+                // 2. SAUVEGARDER L'UTILISATEUR ET SON REFRESH TOKEN DANS SUPABASE
+                // C'est ça qui permet au robot de travailler pour lui plus tard !
+                if (response.refresh_token) {
+                    await sb.from('users').upsert({
+                        spotify_id: profile.id,
+                        refresh_token: response.refresh_token,
+                        display_name: profile.display_name,
+                        last_sync: new Date()
+                    });
+                    console.log("Utilisateur enregistré pour le bot automatique !");
+                }
+
+                // 3. Charger les données
                 loadSpotifyApiStats(currentToken, 'short_term');
-                
-                // Synchro immédiate BDD
                 syncRecentTracks(currentToken);
+                loadSupabaseStats();
             }
         }
+
 
         async function loadSpotifyApiStats(token, range) {
             const headers = { Authorization: `Bearer ${token}` };
@@ -303,3 +330,4 @@
     </script>
 </body>
 </html>
+
