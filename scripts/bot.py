@@ -41,8 +41,10 @@ def process_user(user):
         if "refresh_token" in token_data:
             supabase.table("users").update({"refresh_token": token_data["refresh_token"]}).eq("spotify_id", user["spotify_id"]).execute()
 
-        recent_res = requests.get("https://api.spotify.com/v1/me/player/recently-played?limit=50", 
-            headers={"Authorization": f"Bearer {access_token}"})
+        recent_res = requests.get(
+            "https://api.spotify.com/v1/me/player/recently-played?limit=50", 
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
         
         if recent_res.status_code != 200:
             print(f"Erreur API Spotify: {recent_res.status_code}")
@@ -51,8 +53,15 @@ def process_user(user):
         tracks = recent_res.json().get("items", [])
         print(f"Récupéré {len(tracks)} titres.")
 
+        # Comptage des nouveaux titres
+        played_at_list = [item["played_at"] for item in tracks]
+        existing = supabase.table("spotify_history").select("played_at").in_("played_at", played_at_list).eq("user_id", user["spotify_id"]).execute()
+        already_in_db = {item["played_at"] for item in existing.data}
+
+        new_tracks = [item for item in tracks if item["played_at"] not in already_in_db]
+        
         to_insert = []
-        for item in tracks:
+        for item in new_tracks:
             track = item["track"]
             to_insert.append({
                 "played_at": item["played_at"],
@@ -65,19 +74,22 @@ def process_user(user):
             })
 
         if to_insert:
-            res = supabase.table("spotify_history").upsert(to_insert, on_conflict="played_at").execute()
-            print(f"{len(to_insert)} titres traités.")
-            total_tracks_added += len(to_insert)
-            
+            supabase.table("spotify_history").upsert(to_insert, on_conflict="played_at").execute()
+
+        # On affiche le compte réel de nouveaux titres
+        print(f"{len(to_insert)} titres ajoutés (nouveaux).")
+        total_tracks_added += len(to_insert)
+
         users_processed.append({
             "name": user["display_name"],
             "tracks": len(to_insert)
         })
-            
+        
         supabase.table("users").update({"last_sync": "now()"}).eq("spotify_id", user["spotify_id"]).execute()
 
     except Exception as e:
         print(f"Erreur critique pour cet utilisateur: {e}")
+
 
 # --- MAIN ---
 all_users = supabase.table("users").select("*").execute()
