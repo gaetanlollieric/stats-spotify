@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Mon Spotify Stats (Live DB)</title>
+    <title>Spotify Stats (Multi-User)</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
@@ -33,7 +33,7 @@
         .big-stat { font-size: 2.5rem; font-weight: bold; margin: 10px 0; }
         .stat-label { color: #b3b3b3; font-size: 0.9rem; }
 
-        /* Controls (Boutons Filtres) */
+        /* Controls */
         .controls { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; }
         .filter-btn {
             background: transparent; border: 1px solid #555; color: white;
@@ -44,12 +44,11 @@
             color: black; font-weight: bold;
         }
 
-        /* Table & Lists */
+        /* Tables & Lists */
         .track-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
         .track-table th { text-align: left; color: #888; padding: 10px; border-bottom: 1px solid #333; }
         .track-table td { padding: 10px; border-bottom: 1px solid #222; }
         .count-badge { background: #333; padding: 2px 8px; border-radius: 10px; font-size: 0.8rem; color: var(--spotify-green); font-weight: bold; }
-        
         ol { padding-left: 20px; }
         li { margin-bottom: 8px; color: #ddd; }
 
@@ -76,8 +75,9 @@
 
     <!-- DASHBOARD -->
     <div id="dashboard" class="container hidden">
-        <h1>Tableau de Bord Unifié</h1>
-        <p style="text-align:center; color:#888">Historique synchronisé via Supabase + GitHub Actions</p>
+        <!-- ICI : J'ai ajouté le SPAN pour corriger ton erreur JS -->
+        <h1>Tableau de Bord (<span id="user-display-name">...</span>)</h1>
+        <p style="text-align:center; color:#888">Données sécurisées & synchronisées</p>
 
         <!-- Section BDD (Supabase) -->
         <div class="stats-grid">
@@ -91,10 +91,9 @@
             </div>
         </div>
 
-        <!-- Graphique Heures (BDD) -->
+        <!-- Graphique Heures -->
         <h2>⏰ Votre Rythme (Heures d'écoute)</h2>
         <div class="card">
-            <p class="stat-label">Basé sur l'historique complet de la base de données</p>
             <div class="chart-wrapper">
                 <canvas id="hourlyChart"></canvas>
             </div>
@@ -111,7 +110,7 @@
 
         <br><hr style="border-color:#333"><br>
 
-        <!-- Section API Spotify (Tops du moment) -->
+        <!-- Section API Spotify -->
         <h2>🔥 Vos Tops du Moment (API Spotify)</h2>
         
         <div class="controls">
@@ -136,25 +135,23 @@
         // --- 1. CONFIGURATION ---
         const clientId = '1f8e5a30d7d4470aa41dd7ba69e4a94f';
         const redirectUri = 'https://gaetanlollieric.github.io/stats-spotify/index.html';
-        
-        // VOS CLES (Celles que vous avez fournies)
         const SUPABASE_URL = 'https://kvrwymmsgwstvyqmscuy.supabase.co'; 
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2cnd5bW1zZ3dzdHZ5cW1zY3V5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3NjAxODksImV4cCI6MjA3OTMzNjE4OX0.XNJOD5MzOaM8u_tRuvXZvx2Q_mHUTbk-mAbUFnoU3H4'; 
 
-        // --- 2. INITIALISATION ---
         const { createClient } = supabase;
         const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+        // CORRECTION: Pas de offline_access ici pour éviter l'erreur "Illegal Scope"
+        // Spotify donne le refresh token automatiquement avec le flow PKCE standard
         const scopes = 'user-top-read user-read-recently-played'; 
-        let currentToken = null; // Pour stocker le token et le réutiliser avec les boutons
+        
+        let currentToken = null;
+        let currentUserId = null;
 
         // PKCE Tools
         function generateRandomString(l){let t='';const p='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';for(let i=0;i<l;i++)t+=p.charAt(Math.floor(Math.random()*p.length));return t;}
         async function generateCodeChallenge(v){const e=new TextEncoder();const d=e.encode(v);const dig=await window.crypto.subtle.digest('SHA-256',d);return btoa(String.fromCharCode(...new Uint8Array(dig))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/, '');}
 
         window.addEventListener('load', async () => {
-            // Charger BDD sans attendre
-            loadSupabaseStats();
-
             const params = new URLSearchParams(window.location.search);
             const code = params.get("code");
             if (code) { await handleSpotifyCallback(code); }
@@ -168,43 +165,82 @@
             document.location = `https://accounts.spotify.com/authorize?${p.toString()}`;
         });
 
-        // --- 3. GESTION BOUTONS FILTRES ---
         window.changeRange = function(range, btn) {
-            if (!currentToken) return alert("Veuillez vous connecter d'abord !");
-            
-            // Gestion visuelle des boutons
+            if (!currentToken) return alert("Connectez-vous d'abord");
             document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            
-            // Rechargement des données
             loadSpotifyApiStats(currentToken, range);
         }
 
-        // --- 4. FONCTIONS SUPABASE (BDD) ---
+        // --- LOGIQUE MULTI-USER & CONNEXION ---
+        async function handleSpotifyCallback(code) {
+            const verifier = localStorage.getItem("verifier");
+            const payload = {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ client_id: clientId, grant_type: 'authorization_code', code: code, redirect_uri: redirectUri, code_verifier: verifier }),
+            };
+
+            const body = await fetch("https://accounts.spotify.com/api/token", payload);
+            const response = await body.json();
+            
+            if (response.access_token) {
+                window.history.replaceState({}, document.title, window.location.pathname);
+                document.getElementById('login-section').classList.add('hidden');
+                document.getElementById('dashboard').classList.remove('hidden');
+                
+                currentToken = response.access_token;
+
+                // 1. Récupérer le profil de l'utilisateur (Vital pour le multi-user)
+                const resProfile = await fetch("https://api.spotify.com/v1/me", { headers: { Authorization: `Bearer ${currentToken}` } });
+                const profile = await resProfile.json();
+                
+                currentUserId = profile.id; // C'est le VRAI pseudo (gaetan...) pas le client ID
+                document.getElementById('user-display-name').innerText = profile.display_name;
+                console.log("Utilisateur connecté :", currentUserId);
+
+                // 2. Sauvegarder l'utilisateur et son Refresh Token pour le Robot
+                if (response.refresh_token) {
+                    await sb.from('users').upsert({
+                        spotify_id: profile.id,
+                        refresh_token: response.refresh_token,
+                        display_name: profile.display_name,
+                        last_sync: new Date()
+                    });
+                    console.log("Utilisateur enregistré pour le bot !");
+                }
+
+                // 3. Lancer les chargements
+                loadSpotifyApiStats(currentToken, 'short_term');
+                syncRecentTracks(currentToken); // Synchro immédiate avec le bon user_id
+                loadSupabaseStats(); // Lecture filtrée par user_id
+            }
+        }
+
+        // --- SUPABASE (Filtré par ID) ---
         async function loadSupabaseStats() {
-            console.log("Chargement BDD...");
-            const { data: history, error } = await sb.from('spotify_history').select('played_at, duration_ms, track_name, artist_name');
+            if (!currentUserId) return;
 
-            if (error || !history) { console.error("Erreur Supabase:", error); return; }
+            // On ne charge QUE les données de l'utilisateur connecté
+            const { data: history, error } = await sb
+                .from('spotify_history')
+                .select('played_at, duration_ms, track_name, artist_name')
+                .eq('user_id', currentUserId);
 
-            // A. Stats Globales
+            if (error) { console.error("Erreur Supabase:", error); return; }
+            if (!history) return;
+
             document.getElementById('db-total-tracks').innerText = history.length;
             let totalMs = history.reduce((acc, item) => acc + item.duration_ms, 0);
             let hours = Math.floor(totalMs / 3600000);
             document.getElementById('db-total-time').innerText = `${hours} heures`;
 
-            // B. Graphique Heures
             renderHourlyChart(history);
 
-            // C. Top Titres BDD
             const counts = {};
-            history.forEach(t => {
-                const key = `${t.track_name}###${t.artist_name}`;
-                counts[key] = (counts[key] || 0) + 1;
-            });
-            
+            history.forEach(t => { const key = `${t.track_name}###${t.artist_name}`; counts[key] = (counts[key] || 0) + 1; });
             const sorted = Object.entries(counts).sort(([,a], [,b]) => b - a).slice(0, 10);
-
+            
             const tbody = document.getElementById('db-top-tracks');
             tbody.innerHTML = '';
             sorted.forEach(([key, count]) => {
@@ -213,122 +249,67 @@
             });
         }
 
-        function renderHourlyChart(history) {
-            const hoursBuckets = new Array(24).fill(0);
-            history.forEach(item => { hoursBuckets[new Date(item.played_at).getHours()]++; });
-
-            const ctx = document.getElementById('hourlyChart').getContext('2d');
-            // Si un graph existe déjà, on ne le redessine pas par dessus (Chart.js bug sinon)
-            if (window.myHourlyChart) window.myHourlyChart.destroy();
-
-            window.myHourlyChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: [...Array(24).keys()].map(h => h + 'h'),
-                    datasets: [{
-                        label: 'Titres',
-                        data: hoursBuckets,
-                        backgroundColor: 'rgba(59, 130, 246, 0.6)',
-                        borderColor: '#3b82f6',
-                        borderWidth: 1,
-                        borderRadius: 4
-                    }]
-                },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: { y: { grid: { color: '#333' }, ticks:{color:'white'} }, x: { grid: { display: false }, ticks:{color:'white'} } }
-                }
-            });
-        }
-
-        // --- 5. FONCTIONS API SPOTIFY ---
-        async function handleSpotifyCallback(code) {
-            const verifier = localStorage.getItem("verifier");
-            const payload = {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams({ 
-                    client_id: clientId, 
-                    grant_type: 'authorization_code', 
-                    code: code, 
-                    redirect_uri: redirectUri, 
-                    code_verifier: verifier 
-                }),
-            };
-
-            const body = await fetch("https://accounts.spotify.com/api/token", payload);
-            const response = await body.json();
-            
-            if (response.access_token) {
-                // Nettoyage URL
-                window.history.replaceState({}, document.title, window.location.pathname);
-                document.getElementById('login-section').classList.add('hidden');
-                document.getElementById('dashboard').classList.remove('hidden');
-                
-                currentToken = response.access_token;
-
-                // 1. Récupérer infos profil
-                const resProfile = await fetch("https://api.spotify.com/v1/me", { headers: { Authorization: `Bearer ${currentToken}` } });
-                const profile = await resProfile.json();
-                currentUserId = profile.id;
-                document.getElementById('user-display-name').innerText = profile.display_name;
-
-                // 2. SAUVEGARDER L'UTILISATEUR ET SON REFRESH TOKEN DANS SUPABASE
-                // C'est ça qui permet au robot de travailler pour lui plus tard !
-                if (response.refresh_token) {
-                    await sb.from('users').upsert({
-                        spotify_id: profile.id,
-                        refresh_token: response.refresh_token,
-                        display_name: profile.display_name,
-                        last_sync: new Date()
-                    });
-                    console.log("Utilisateur enregistré pour le bot automatique !");
-                }
-
-                // 3. Charger les données
-                loadSpotifyApiStats(currentToken, 'short_term');
-                syncRecentTracks(currentToken);
-                loadSupabaseStats();
-            }
-        }
-
-
-        async function loadSpotifyApiStats(token, range) {
-            const headers = { Authorization: `Bearer ${token}` };
-            
-            const [artRes, trkRes] = await Promise.all([
-                fetch(`https://api.spotify.com/v1/me/top/artists?time_range=${range}&limit=10`, { headers }),
-                fetch(`https://api.spotify.com/v1/me/top/tracks?time_range=${range}&limit=10`, { headers })
-            ]);
-            
-            const artists = await artRes.json();
-            const tracks = await trkRes.json();
-
-            const al = document.getElementById('api-artists'); al.innerHTML='';
-            if(artists.items) artists.items.forEach(i => al.innerHTML += `<li>${i.name}</li>`);
-
-            const tl = document.getElementById('api-tracks'); tl.innerHTML='';
-            if(tracks.items) tracks.items.forEach(i => tl.innerHTML += `<li>${i.name} - <span style="color:#3b82f6">${i.artists[0].name}</span></li>`);
-        }
-
         async function syncRecentTracks(token) {
-            // Copie de la fonction de synchro vue précédemment...
+            if (!currentUserId) return;
             try {
                 const res = await fetch('https://api.spotify.com/v1/me/player/recently-played?limit=50', {headers: { Authorization: `Bearer ${token}` }});
                 const data = await res.json();
                 if(!data.items) return;
 
                 const tracksToInsert = data.items.map(item => ({
-                    played_at: item.played_at, track_name: item.track.name, artist_name: item.track.artists[0].name,
-                    album_name: item.track.album.name, spotify_id: item.track.id, duration_ms: item.track.duration_ms
+                    played_at: item.played_at, 
+                    track_name: item.track.name, 
+                    artist_name: item.track.artists[0].name,
+                    album_name: item.track.album.name, 
+                    spotify_id: item.track.id, 
+                    duration_ms: item.track.duration_ms,
+                    user_id: currentUserId // ON AJOUTE L'ID ICI (Crucial)
                 }));
+
                 await sb.from('spotify_history').upsert(tracksToInsert, { onConflict: 'played_at' });
-                loadSupabaseStats(); // Recharger pour voir l'ajout direct
+                loadSupabaseStats(); // Recharger l'affichage
             } catch (e) { console.error(e); }
+        }
+
+        // --- GRAPHIQUE & API ---
+        function renderHourlyChart(history) {
+            console.log("Génération graph...");
+            const hoursBuckets = new Array(24).fill(0);
+            history.forEach(item => {
+                if (item.played_at) {
+                    const date = new Date(item.played_at);
+                    if (!isNaN(date.getTime())) {
+                        hoursBuckets[date.getHours()]++;
+                    }
+                }
+            });
+
+            const ctx = document.getElementById('hourlyChart').getContext('2d');
+            if (window.myHourlyChart instanceof Chart) window.myHourlyChart.destroy();
+
+            window.myHourlyChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: [...Array(24).keys()].map(h => h + 'h'),
+                    datasets: [{ label: 'Titres', data: hoursBuckets, backgroundColor: '#3b82f6' }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: {display:false} }, scales: { x: {grid:{display:false}, ticks:{color:'white'}}, y: {grid:{color:'#333'}, ticks:{color:'white'}} } }
+            });
+        }
+
+        async function loadSpotifyApiStats(token, range) {
+            const headers = { Authorization: `Bearer ${token}` };
+            const [artRes, trkRes] = await Promise.all([
+                fetch(`https://api.spotify.com/v1/me/top/artists?time_range=${range}&limit=10`, { headers }),
+                fetch(`https://api.spotify.com/v1/me/top/tracks?time_range=${range}&limit=10`, { headers })
+            ]);
+            const artists = await artRes.json();
+            const tracks = await trkRes.json();
+            const al = document.getElementById('api-artists'); al.innerHTML='';
+            if(artists.items) artists.items.forEach(i => al.innerHTML += `<li>${i.name}</li>`);
+            const tl = document.getElementById('api-tracks'); tl.innerHTML='';
+            if(tracks.items) tracks.items.forEach(i => tl.innerHTML += `<li>${i.name} - <span style="color:#3b82f6">${i.artists[0].name}</span></li>`);
         }
     </script>
 </body>
 </html>
-
-
