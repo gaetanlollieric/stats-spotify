@@ -6,17 +6,21 @@ import time
 
 # Configuration
 SUPA_URL = os.environ.get("SUPABASE_URL")
-SUPA_KEY = os.environ.get("SUPABASE_KEY") # Doit être la clé SERVICE_ROLE (Secret)
+SUPA_KEY = os.environ.get("SUPABASE_KEY")
 CLIENT_ID = os.environ.get("SPOTIFY_CLIENT_ID")
 CLIENT_SECRET = os.environ.get("SPOTIFY_CLIENT_SECRET")
+DISCORD_WEBHOOK = os.environ.get("DISCORD_WEBHOOK")  # NOUVEAU
 
-# Connexion Supabase
 supabase = create_client(SUPA_URL, SUPA_KEY)
 
+# Stats globales
+total_tracks_added = 0
+users_processed = []
+
 def process_user(user):
+    global total_tracks_added
     print(f"\n--- Traitement de : {user['display_name']} ({user['spotify_id']}) ---")
     
-    # 1. Rafraîchir le token
     auth_str = f"{CLIENT_ID}:{CLIENT_SECRET}"
     b64_auth = base64.b64encode(auth_str.encode()).decode()
     
@@ -30,16 +34,13 @@ def process_user(user):
         
         if "error" in token_data:
             print(f"Erreur Refresh Token: {token_data}")
-            # Optionnel : Supprimer l'user s'il a révoqué l'accès
             return
 
         access_token = token_data['access_token']
         
-        # Si on reçoit un nouveau refresh token, on le met à jour
         if "refresh_token" in token_data:
             supabase.table("users").update({"refresh_token": token_data["refresh_token"]}).eq("spotify_id", user["spotify_id"]).execute()
 
-        # 2. Récupérer l'historique
         recent_res = requests.get("https://api.spotify.com/v1/me/player/recently-played?limit=50", 
             headers={"Authorization": f"Bearer {access_token}"})
         
@@ -50,8 +51,6 @@ def process_user(user):
         tracks = recent_res.json().get("items", [])
         print(f"Récupéré {len(tracks)} titres.")
 
-        # 3. Insérer dans l'historique
-        count = 0
         to_insert = []
         for item in tracks:
             track = item["track"]
@@ -62,28 +61,44 @@ def process_user(user):
                 "album_name": track["album"]["name"],
                 "spotify_id": track["id"],
                 "duration_ms": track["duration_ms"],
-                "user_id": user["spotify_id"] # On lie bien à CET utilisateur
+                "user_id": user["spotify_id"]
             })
 
         if to_insert:
-            # Upsert en masse
             res = supabase.table("spotify_history").upsert(to_insert, on_conflict="played_at").execute()
-            print("Données insérées/mises à jour.")
+            print(f"{len(to_insert)} titres traités.")
+            total_tracks_added += len(to_insert)
             
-        # Mettre à jour la date de dernière synchro
+        users_processed.append({
+            "name": user["display_name"],
+            "tracks": len(to_insert)
+        })
+            
         supabase.table("users").update({"last_sync": "now()"}).eq("spotify_id", user["spotify_id"]).execute()
 
     except Exception as e:
         print(f"Erreur critique pour cet utilisateur: {e}")
 
-# --- MAIN LOOP ---
-# Récupérer tous les utilisateurs enregistrés
+# --- MAIN ---
 all_users = supabase.table("users").select("*").execute()
 
 if all_users.data:
     print(f"Démarrage du bot pour {len(all_users.data)} utilisateurs...")
     for user in all_users.data:
         process_user(user)
-        time.sleep(1) # Petite pause pour être gentil avec l'API
+        time.sleep(1)
+    
+    # ENVOI DE LA NOTIFICATION DISCORD
+    if DISCORD_WEBHOOK:
+        message = f"🎵 **Mise à jour Spotify terminée !**\n\n"
+        message += f"**Utilisateurs traités :** {len(users_processed)}\n"
+        message += f"**Total de nouveaux titres :** {total_tracks_added}\n\n"
+        
+        for u in users_processed:
+            message += f"• {u['name']} : {u['tracks']} titre(s)\n"
+        
+        discord_payload = {"content": message}
+        requests.post(DISCORD_WEBHOOK, json=discord_payload)
+        print("Notification Discord envoyée !")
 else:
     print("Aucun utilisateur trouvé dans la table 'users'.")
