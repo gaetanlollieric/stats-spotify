@@ -144,7 +144,7 @@
         // --- 2. INITIALISATION ---
         const { createClient } = supabase;
         const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
-        const scopes = 'user-top-read user-read-recently-played offline_access'; 
+        const scopes = 'user-top-read user-read-recently-played'; 
         let currentToken = null; // Pour stocker le token et le réutiliser avec les boutons
 
         // PKCE Tools
@@ -330,4 +330,5 @@
     </script>
 </body>
 </html>
+
 
