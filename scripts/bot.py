@@ -20,6 +20,9 @@ stats_discord = {
 }
 
 def normalize_played_at(dt):
+    """Normalise le format de date pour correspondre strictement entre Spotify et Supabase"""
+    if not dt: return ""
+    # On remplace le Z par +00:00 pour le standard ISO strict
     return dt.replace('Z', '+00:00')
 
 def get_spotify_token(refresh_token):
@@ -59,9 +62,11 @@ def process_user(user):
     # 3. Filtrer ce qui est DÉJÀ en base pour ce user
     played_at_list = [normalize_played_at(item["played_at"]) for item in tracks_data]
     
-    # Note: On check la nouvelle table listening_history
+    # On récupère ce qui existe déjà dans la nouvelle table
     existing = supabase.table("listening_history").select("played_at").in_("played_at", played_at_list).eq("user_id", user["spotify_id"]).execute()
-    already_in_db = {item["played_at"] for item in existing.data}
+    
+    # On normalise aussi ce qui vient de la base pour être sûr de la comparaison
+    already_in_db = {normalize_played_at(item["played_at"]) for item in existing.data}
 
     new_items = [t for t in tracks_data if normalize_played_at(t["played_at"]) not in already_in_db]
     
@@ -72,7 +77,6 @@ def process_user(user):
     print(f"{len(new_items)} nouveaux titres à traiter.")
 
     # 4. Récupération des Genres (Infos Artistes)
-    # On collecte tous les ID d'artistes des NOUVEAUX titres
     artist_ids = list(set([t["track"]["artists"][0]["id"] for t in new_items]))
     
     artists_db_data = []
@@ -89,7 +93,7 @@ def process_user(user):
                     "genres": a["genres"]
                 })
 
-    # 5. INSERTIONS (Upsert pour ne pas casser si l'artiste existe déjà)
+    # 5. INSERTIONS 
     
     # A. Artistes
     if artists_db_data:
@@ -107,12 +111,11 @@ def process_user(user):
             "duration_ms": track["duration_ms"]
         })
     
-    # Dédoublonnage des tracks avant envoi (au cas où le même titre est écouté 2 fois dans le lot)
     unique_tracks = {v['spotify_id']:v for v in tracks_db_data}.values()
     if unique_tracks:
         supabase.table("tracks").upsert(list(unique_tracks)).execute()
 
-    # C. Historique
+    # C. Historique (CORRIGÉ ICI)
     history_db_data = []
     for item in new_items:
         history_db_data.append({
@@ -122,9 +125,13 @@ def process_user(user):
         })
 
     if history_db_data:
-        supabase.table("listening_history").upsert(history_db_data).execute()
+        # AJOUT DE ignore_duplicates=True POUR ÉVITER L'ERREUR 23505
+        supabase.table("listening_history").upsert(
+            history_db_data, 
+            on_conflict="played_at, user_id", 
+            ignore_duplicates=True
+        ).execute()
         
-        # Mise à jour stats pour Discord
         stats_discord["total_tracks"] += len(history_db_data)
         stats_discord["users_processed"].append({
             "name": user["display_name"],
@@ -152,4 +159,3 @@ if all_users.data:
         for u in stats_discord["users_processed"]:
             msg += f"- {u['name']} : {u['count']}\n"
         requests.post(DISCORD_WEBHOOK, json={"content": msg})
-
