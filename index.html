@@ -482,47 +482,70 @@
         }
     }
 
-    // --- FONCTION LECTURE SPOTIFY ---
+        // --- FONCTION LECTURE / FILE D'ATTENTE ---
     async function playTop10() {
-        if (!currentToken) return alert("Non connecté");
-        if (currentTop10URIs.length === 0) return alert("Aucun titre à jouer");
+        if (!currentToken) return alert("Veuillez vous reconnecter pour activer cette fonction.");
+        if (currentTop10URIs.length === 0) return alert("Aucun titre à jouer dans ce Top 10.");
 
-        // 1. Chercher un device actif
+        // 1. Chercher les appareils
         const devicesRes = await fetch('https://api.spotify.com/v1/me/player/devices', {
             headers: { Authorization: `Bearer ${currentToken}` }
         });
-        const devices = await devicesRes.json();
+        const devicesData = await devicesRes.json();
+        const devices = devicesData.devices || [];
         
-        if (!devices.devices || devices.devices.length === 0) {
-            return alert("⚠️ Aucun appareil Spotify détecté.\n\nOuvrez Spotify sur votre PC ou téléphone et réessayez !");
+        if (devices.length === 0) {
+            return alert("⚠️ Spotify ne détecte aucun appareil.\n\nAstuce : Lancez une musique manuellement sur votre téléphone/PC pour le 'réveiller', puis réessayez ici !");
         }
 
-        const activeDevice = devices.devices.find(d => d.is_active) || devices.devices[0];
-        
-        // 2. Lancer la commande Play
-        const playRes = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${activeDevice.id}`, {
-            method: 'PUT',
-            headers: { 
-                Authorization: `Bearer ${currentToken}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                uris: currentTop10URIs
-            })
-        });
+        // On cherche un appareil actif, sinon on prend le premier de la liste (souvent le dernier utilisé)
+        const targetDevice = devices.find(d => d.is_active) || devices[0];
 
-        if (playRes.status === 204) {
-            // Petit feedback visuel sympa
-            const btn = document.getElementById('play-top-10-btn');
-            const originalText = btn.innerText;
-            btn.innerText = `✅ Lecture lancée sur ${activeDevice.name}...`;
-            setTimeout(() => btn.innerText = originalText, 3000);
-        } else {
-            const err = await playRes.json();
-            console.error(err);
-            alert("Erreur lors du lancement (Avez-vous Spotify Premium ?)");
+        // Petit message de chargement
+        const btn = document.getElementById('play-top-10-btn');
+        const originalText = btn.innerText;
+        btn.innerText = `⏳ Envoi sur ${targetDevice.name}...`;
+
+        try {
+            // TENTATIVE 1 : Remplacer la lecture en cours (Mode Playlist)
+            // C'est le mieux pour écouter tout le Top 10 d'un coup
+            const playRes = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${targetDevice.id}`, {
+                method: 'PUT',
+                headers: { 
+                    Authorization: `Bearer ${currentToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    uris: currentTop10URIs // On envoie toute la liste
+                })
+            });
+
+            if (playRes.status === 204) {
+                btn.innerText = `✅ Lecture lancée !`;
+                setTimeout(() => btn.innerText = originalText, 3000);
+            } else {
+                // Si erreur (ex: appareil non premium ou restriction), on tente l'ajout à la file d'attente
+                console.warn("Echec lecture directe, tentative d'ajout à la file d'attente...");
+                
+                // TENTATIVE 2 : Ajouter à la file d'attente un par un (Fallback)
+                // Attention : L'API Queue n'accepte qu'un titre à la fois
+                for (const uri of currentTop10URIs) {
+                    await fetch(`https://api.spotify.com/v1/me/player/queue?uri=${uri}&device_id=${targetDevice.id}`, {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${currentToken}` }
+                    });
+                }
+                btn.innerText = `✅ Ajouté à la file d'attente !`;
+                setTimeout(() => btn.innerText = originalText, 3000);
+            }
+
+        } catch (e) {
+            console.error(e);
+            alert("Erreur technique. Vérifiez que vous êtes bien Premium et que Spotify est lancé.");
+            btn.innerText = originalText;
         }
     }
+
 
     // --- GRAPHIQUE ---
     function renderHourlyChart(data) {
@@ -587,6 +610,7 @@
     </script>
 </body>
 </html>
+
 
 
 
