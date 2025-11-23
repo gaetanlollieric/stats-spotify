@@ -137,23 +137,26 @@
         const redirectUri = 'https://gaetanlollieric.github.io/stats-spotify/index.html';
         const SUPABASE_URL = 'https://kvrwymmsgwstvyqmscuy.supabase.co'; 
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2cnd5bW1zZ3dzdHZ5cW1zY3V5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3NjAxODksImV4cCI6MjA3OTMzNjE4OX0.XNJOD5MzOaM8u_tRuvXZvx2Q_mHUTbk-mAbUFnoU3H4'; 
-
+    
         const { createClient } = supabase;
         const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
         const scopes = 'user-top-read user-read-recently-played'; 
         
         let currentToken = null;
         let currentUserId = null;
-
+        let allHistoryData = []; // Stockage local de tout l'historique
+        let allGenres = new Set(); // Stockage des genres uniques
+    
         function generateRandomString(l){let t='';const p='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';for(let i=0;i<l;i++)t+=p.charAt(Math.floor(Math.random()*p.length));return t;}
         async function generateCodeChallenge(v){const e=new TextEncoder();const d=e.encode(v);const dig=await window.crypto.subtle.digest('SHA-256',d);return btoa(String.fromCharCode(...new Uint8Array(dig))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/, '');}
-
+    
+        // --- INITIALISATION ---
         window.addEventListener('load', async () => {
             const params = new URLSearchParams(window.location.search);
             const code = params.get("code");
             if (code) { await handleSpotifyCallback(code); }
         });
-
+    
         document.getElementById('login-btn').addEventListener('click', async () => {
             const v = generateRandomString(128);
             const c = await generateCodeChallenge(v);
@@ -161,15 +164,15 @@
             const p = new URLSearchParams({ client_id: clientId, response_type: "code", redirect_uri: redirectUri, scope: scopes, code_challenge_method: "S256", code_challenge: c });
             document.location = `https://accounts.spotify.com/authorize?${p.toString()}&show_dialog=true`;
         });
-
+    
         window.changeRange = function(range, btn) {
             if (!currentToken) return alert("Connectez-vous d'abord");
             document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             loadSpotifyApiStats(currentToken, range);
         }
-
-        // --- LOGIQUE MULTI-USER ---
+    
+        // --- LOGIN & SYNC ---
         async function handleSpotifyCallback(code) {
             const verifier = localStorage.getItem("verifier");
             const payload = {
@@ -177,7 +180,7 @@
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: new URLSearchParams({ client_id: clientId, grant_type: 'authorization_code', code: code, redirect_uri: redirectUri, code_verifier: verifier }),
             };
-
+    
             const body = await fetch("https://accounts.spotify.com/api/token", payload);
             const response = await body.json();
             
@@ -187,14 +190,14 @@
                 document.getElementById('dashboard').classList.remove('hidden');
                 
                 currentToken = response.access_token;
-
+    
                 const resProfile = await fetch("https://api.spotify.com/v1/me", { headers: { Authorization: `Bearer ${currentToken}` } });
                 const profile = await resProfile.json();
                 
                 currentUserId = profile.id;
                 document.getElementById('user-display-name').innerText = profile.display_name;
                 console.log("Utilisateur connecté :", currentUserId);
-
+    
                 if (response.refresh_token) {
                     await sb.from('users').upsert({
                         spotify_id: profile.id,
@@ -202,73 +205,162 @@
                         display_name: profile.display_name,
                         last_sync: new Date()
                     });
-                    console.log("Utilisateur enregistré pour le bot !");
                 }
-
+    
+                // On charge tout
                 loadSpotifyApiStats(currentToken, 'short_term');
-                syncRecentTracks(currentToken);
+                // Note: on ne lance plus syncRecentTracks ici car le bot s'en occupe, 
+                // mais si vous voulez une maj immédiate vous pouvez le laisser.
+                // syncRecentTracks(currentToken); 
                 loadSupabaseStats();
             }
         }
-
-        // --- SUPABASE ---
+    
+        // --- RÉCUPÉRATION DONNÉES SUPABASE (JOIN) ---
         async function loadSupabaseStats() {
             if (!currentUserId) return;
-
-            const { data: history, error } = await sb
-                .from('spotify_history')
-                .select('played_at, duration_ms, track_name, artist_name')
-                .eq('user_id', currentUserId);
-
-            if (error) { console.error("Erreur Supabase:", error); return; }
-            if (!history) return;
-
-            const count = history.length;
+    
+            document.getElementById('db-total-tracks').innerText = "Chargement...";
+    
+            // C'est ici que la magie opère : on joint les 3 tables
+            const { data, error } = await sb
+                .from('listening_history')
+                .select(`
+                    played_at,
+                    tracks (
+                        name,
+                        duration_ms,
+                        artists (
+                            name,
+                            genres
+                        )
+                    )
+                `)
+                .eq('user_id', currentUserId)
+                .order('played_at', { ascending: false });
+    
+            if (error) { 
+                console.error("Erreur Supabase:", error); 
+                document.getElementById('db-total-tracks').innerText = "Erreur";
+                return; 
+            }
+    
+            if (!data || data.length === 0) {
+                document.getElementById('db-total-tracks').innerText = "0";
+                return;
+            }
+    
+            // Aplatir les données pour simplifier leur usage
+            allHistoryData = data.map(item => ({
+                played_at: item.played_at,
+                track_name: item.tracks?.name || "Inconnu",
+                artist_name: item.tracks?.artists?.name || "Inconnu",
+                duration_ms: item.tracks?.duration_ms || 0,
+                genres: item.tracks?.artists?.genres || [] 
+            }));
+    
+            // Récupérer tous les genres uniques
+            allGenres = new Set();
+            allHistoryData.forEach(d => {
+                if(d.genres) d.genres.forEach(g => allGenres.add(g));
+            });
+    
+            setupGenreFilter();
+            renderDashboard(allHistoryData); // Affichage initial (tout)
+        }
+    
+        // --- FILTRES ---
+        function setupGenreFilter() {
+            const container = document.querySelector('.controls');
+            
+            // Eviter de créer le select plusieurs fois
+            if (document.getElementById('genre-select')) return;
+    
+            const select = document.createElement('select');
+            select.id = 'genre-select';
+            select.className = 'filter-btn';
+            select.style.backgroundColor = '#181818';
+            select.style.color = 'white';
+            select.style.border = '1px solid #555';
+            
+            // Option par défaut
+            select.innerHTML = '<option value="all">🎵 Tous les genres</option>';
+            
+            const sortedGenres = Array.from(allGenres).sort();
+            sortedGenres.forEach(g => {
+                // Mettre la première lettre en majuscule pour faire joli
+                const label = g.charAt(0).toUpperCase() + g.slice(1);
+                select.innerHTML += `<option value="${g}">${label}</option>`;
+            });
+    
+            select.addEventListener('change', (e) => {
+                const selectedGenre = e.target.value;
+                if (selectedGenre === 'all') {
+                    renderDashboard(allHistoryData);
+                } else {
+                    // On garde les titres qui contiennent le genre sélectionné
+                    const filteredData = allHistoryData.filter(d => d.genres.includes(selectedGenre));
+                    renderDashboard(filteredData, selectedGenre);
+                }
+            });
+    
+            // Insérer avant les boutons de range
+            container.insertBefore(select, container.firstChild);
+        }
+    
+        // --- AFFICHAGE DASHBOARD ---
+        function renderDashboard(data, genreLabel = null) {
+            const count = data.length;
+            
+            // 1. Cartes Stats
             document.getElementById('db-total-tracks').innerText = count;
             
-            // Mise à jour du titre dynamique
-            document.getElementById('top-tracks-title').innerText = `🏆 Top 10 de vos titres les plus écoutés sur les ${count} dernières écoutes`;
-
-            let totalMs = history.reduce((acc, item) => acc + item.duration_ms, 0);
-            let hours = Math.floor(totalMs / 3600000);
+            // Titre dynamique
+            const titleEl = document.getElementById('top-tracks-title');
+            if (genreLabel) {
+                // Met la première lettre en majuscule
+                const niceLabel = genreLabel.charAt(0).toUpperCase() + genreLabel.slice(1);
+                titleEl.innerText = `🏆 Top 10 ${niceLabel} (${count} écoutes)`;
+            } else {
+                titleEl.innerText = `🏆 Top 10 de vos titres les plus écoutés sur les ${count} dernières écoutes`;
+            }
+    
+            // Temps total
+            let totalMs = data.reduce((acc, item) => acc + item.duration_ms, 0);
+            let hours = (totalMs / 3600000).toFixed(1);
             document.getElementById('db-total-time').innerText = `${hours} heures`;
-
-            renderHourlyChart(history);
-
-            const counts = {};
-            history.forEach(t => { const key = `${t.track_name}###${t.artist_name}`; counts[key] = (counts[key] || 0) + 1; });
-            const sorted = Object.entries(counts).sort(([,a], [,b]) => b - a).slice(0, 10);
+    
+            // 2. Graphique
+            renderHourlyChart(data);
+    
+            // 3. Top 10 Tracks (Tableau)
+            const trackCounts = {};
+            data.forEach(t => {
+                const key = `${t.track_name}###${t.artist_name}`;
+                trackCounts[key] = (trackCounts[key] || 0) + 1;
+            });
             
+            const sortedTracks = Object.entries(trackCounts)
+                .sort(([,a], [,b]) => b - a)
+                .slice(0, 10);
+    
             const tbody = document.getElementById('db-top-tracks');
             tbody.innerHTML = '';
-            sorted.forEach(([key, count]) => {
+            
+            if (sortedTracks.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:20px; color:#666">Aucune musique trouvée pour ce genre.</td></tr>';
+            }
+    
+            sortedTracks.forEach(([key, c]) => {
                 const [name, artist] = key.split('###');
-                tbody.innerHTML += `<tr><td><strong>${name}</strong></td><td>${artist}</td><td><span class="count-badge">${count}</span></td></tr>`;
+                tbody.innerHTML += `<tr><td><strong>${name}</strong></td><td>${artist}</td><td><span class="count-badge">${c}</span></td></tr>`;
             });
         }
-
-        async function syncRecentTracks(token) {
-            if (!currentUserId) return;
-            try {
-                const res = await fetch('https://api.spotify.com/v1/me/player/recently-played?limit=50', {headers: { Authorization: `Bearer ${token}` }});
-                const data = await res.json();
-                if(!data.items) return;
-
-                const tracksToInsert = data.items.map(item => ({
-                    played_at: item.played_at, track_name: item.track.name, artist_name: item.track.artists[0].name,
-                    album_name: item.track.album.name, spotify_id: item.track.id, duration_ms: item.track.duration_ms,
-                    user_id: currentUserId
-                }));
-
-                await sb.from('spotify_history').upsert(tracksToInsert, { onConflict: 'played_at' });
-                loadSupabaseStats();
-            } catch (e) { console.error(e); }
-        }
-
+    
         // --- GRAPHIQUE ---
-        function renderHourlyChart(history) {
+        function renderHourlyChart(data) {
             const hoursBuckets = new Array(24).fill(0);
-            history.forEach(item => {
+            data.forEach(item => {
                 if (item.played_at) {
                     const date = new Date(item.played_at);
                     if (!isNaN(date.getTime())) {
@@ -276,20 +368,34 @@
                     }
                 }
             });
-
+    
             const ctx = document.getElementById('hourlyChart').getContext('2d');
             if (window.myHourlyChart instanceof Chart) window.myHourlyChart.destroy();
-
+    
             window.myHourlyChart = new Chart(ctx, {
                 type: 'bar',
                 data: {
                     labels: [...Array(24).keys()].map(h => h + 'h'),
-                    datasets: [{ label: 'Titres', data: hoursBuckets, backgroundColor: '#3b82f6' }]
+                    datasets: [{ 
+                        label: 'Titres écoutés', 
+                        data: hoursBuckets, 
+                        backgroundColor: '#3b82f6',
+                        borderRadius: 4
+                    }]
                 },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: {display:false} }, scales: { x: {grid:{display:false}, ticks:{color:'white'}}, y: {grid:{color:'#333'}, ticks:{color:'white'}} } }
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false, 
+                    plugins: { legend: {display:false} }, 
+                    scales: { 
+                        x: {grid:{display:false}, ticks:{color:'#b3b3b3'}}, 
+                        y: {grid:{color:'#333'}, ticks:{color:'#b3b3b3'}} 
+                    } 
+                }
             });
         }
-
+    
+        // --- API SPOTIFY (SECTION BASSE) ---
         async function loadSpotifyApiStats(token, range) {
             const headers = { Authorization: `Bearer ${token}` };
             const [artRes, trkRes] = await Promise.all([
@@ -298,12 +404,16 @@
             ]);
             const artists = await artRes.json();
             const tracks = await trkRes.json();
+            
             const al = document.getElementById('api-artists'); al.innerHTML='';
             if(artists.items) artists.items.forEach(i => al.innerHTML += `<li>${i.name}</li>`);
+            
             const tl = document.getElementById('api-tracks'); tl.innerHTML='';
             if(tracks.items) tracks.items.forEach(i => tl.innerHTML += `<li>${i.name} - <span style="color:#3b82f6">${i.artists[0].name}</span></li>`);
         }
+
     </script>
 </body>
 </html>
+
 
