@@ -22,78 +22,116 @@ def normalize_played_at(dt):
     return dt.replace('Z', '+00:00')
 
 
+# ... (Début du script identique : imports, config, normalize_played_at ...)
+
 def process_user(user):
     global total_tracks_added
-    print(f"\n--- Traitement de : {user['display_name']} ({user['spotify_id']}) ---")
+    print(f"\n--- Traitement de : {user['display_name']} ---")
     
-    auth_str = f"{CLIENT_ID}:{CLIENT_SECRET}"
-    b64_auth = base64.b64encode(auth_str.encode()).decode()
+    # ... (Authentification OAuth identique jusqu'à access_token) ...
+    # ... (Récupération token ... identique) ...
     
-    try:
-        token_res = requests.post("https://accounts.spotify.com/api/token", data={
-            "grant_type": "refresh_token",
-            "refresh_token": user['refresh_token']
-        }, headers={"Authorization": f"Basic {b64_auth}"})
-        
-        token_data = token_res.json()
-        
-        if "error" in token_data:
-            print(f"Erreur Refresh Token: {token_data}")
-            return
+    # 1. Récupérer l'historique
+    recent_res = requests.get(
+        "https://api.spotify.com/v1/me/player/recently-played?limit=50", 
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+    tracks_data = recent_res.json().get("items", [])
+    
+    if not tracks_data:
+        return
 
-        access_token = token_data['access_token']
-        
-        if "refresh_token" in token_data:
-            supabase.table("users").update({"refresh_token": token_data["refresh_token"]}).eq("spotify_id", user["spotify_id"]).execute()
-
-        recent_res = requests.get(
-            "https://api.spotify.com/v1/me/player/recently-played?limit=50", 
+    # 2. Récupérer les genres (Il faut demander les infos Artistes à part)
+    artist_ids = list(set([t["track"]["artists"][0]["id"] for t in tracks_data])) # Liste unique des IDs
+    
+    # On ne peut demander que 50 artistes max d'un coup, on découpe si besoin
+    artists_info = {}
+    for i in range(0, len(artist_ids), 50):
+        chunk = artist_ids[i:i+50]
+        ids_str = ",".join(chunk)
+        art_res = requests.get(
+            f"https://api.spotify.com/v1/artists?ids={ids_str}",
             headers={"Authorization": f"Bearer {access_token}"}
         )
-        
-        if recent_res.status_code != 200:
-            print(f"Erreur API Spotify: {recent_res.status_code}")
-            return
+        if art_res.status_code == 200:
+            for a in art_res.json().get("artists", []):
+                artists_info[a["id"]] = {
+                    "name": a["name"],
+                    "genres": a["genres"] # VOICI LES GENRES !
+                }
 
-        tracks = recent_res.json().get("items", [])
-        print(f"Récupéré {len(tracks)} titres.")
+    # 3. Préparer les données pour les 3 tables
+    new_history = []
+    artists_to_upsert = []
+    tracks_to_upsert = []
 
-        # Comptage des nouveaux titres
-        played_at_list = [normalize_played_at(item["played_at"]) for item in tracks]
-        existing = supabase.table("spotify_history").select("played_at").in_("played_at", played_at_list).eq("user_id", user["spotify_id"]).execute()
-        already_in_db = {normalize_played_at(item["played_at"]) for item in existing.data}
-        new_tracks = [item for item in tracks if normalize_played_at(item["played_at"]) not in already_in_db]
+    # On vérifie ce qu'on a déjà en base pour éviter les doublons d'historique
+    played_at_list = [normalize_played_at(item["played_at"]) for item in tracks_data]
+    existing = supabase.table("listening_history").select("played_at").in_("played_at", played_at_list).eq("user_id", user["spotify_id"]).execute()
+    already_in_db = {normalize_played_at(item["played_at"]) for item in existing.data}
 
-        
-        to_insert = []
-        for item in new_tracks:
-            track = item["track"]
-            to_insert.append({
-                "played_at": item["played_at"],
-                "track_name": track["name"],
-                "artist_name": track["artists"][0]["name"],
-                "album_name": track["album"]["name"],
-                "spotify_id": track["id"],
-                "duration_ms": track["duration_ms"],
-                "user_id": user["spotify_id"]
+    for item in tracks_data:
+        p_at = normalize_played_at(item["played_at"])
+        if p_at in already_in_db:
+            continue # On saute si déjà enregistré
+
+        track = item["track"]
+        artist = track["artists"][0]
+        a_id = artist["id"]
+        t_id = track["id"]
+
+        # Info Artiste (avec Genre)
+        if a_id in artists_info:
+            artists_to_upsert.append({
+                "spotify_id": a_id,
+                "name": artists_info[a_id]["name"],
+                "genres": artists_info[a_id]["genres"]
             })
 
-        if to_insert:
-            supabase.table("spotify_history").upsert(to_insert, on_conflict="played_at").execute()
+        # Info Titre
+        tracks_to_upsert.append({
+            "spotify_id": t_id,
+            "name": track["name"],
+            "artist_id": a_id,
+            "album_name": track["album"]["name"],
+            "duration_ms": track["duration_ms"]
+        })
 
-        # On affiche le compte réel de nouveaux titres
-        print(f"{len(to_insert)} titres ajoutés (nouveaux).")
-        total_tracks_added += len(to_insert)
+        # Info Historique (Léger !)
+        new_history.append({
+            "played_at": p_at,
+            "user_id": user["spotify_id"],
+            "track_id": t_id
+        })
 
+    # 4. Envoyer tout ça à Supabase (Ordre important !)
+    
+    # A. Les Artistes (upsert pour mettre à jour si existe déjà)
+    if artists_to_upsert:
+        # Astuce: deduplicate list of dicts
+        unique_artists = {v['spotify_id']:v for v in artists_to_upsert}.values()
+        supabase.table("artists").upsert(list(unique_artists)).execute()
+
+    # B. Les Titres
+    if tracks_to_upsert:
+        unique_tracks = {v['spotify_id']:v for v in tracks_to_upsert}.values()
+        supabase.table("tracks").upsert(list(unique_tracks)).execute()
+
+    # C. L'Historique
+    if new_history:
+        supabase.table("listening_history").upsert(new_history).execute()
+        print(f"{len(new_history)} nouveaux titres ajoutés (Clean DB).")
+        total_tracks_added += len(new_history)
+        
         users_processed.append({
             "name": user["display_name"],
-            "tracks": len(to_insert)
+            "tracks": len(new_history)
         })
         
+        # Mise à jour timestamp user
         supabase.table("users").update({"last_sync": "now()"}).eq("spotify_id", user["spotify_id"]).execute()
 
-    except Exception as e:
-        print(f"Erreur critique pour cet utilisateur: {e}")
+
 
 
 # --- MAIN ---
