@@ -132,408 +132,462 @@
     </div>
 
     <script>
-                // --- 1. CONFIGURATION ---
-        const clientId = '1f8e5a30d7d4470aa41dd7ba69e4a94f';
-        const redirectUri = 'https://gaetanlollieric.github.io/stats-spotify/index.html';
-        const SUPABASE_URL = 'https://kvrwymmsgwstvyqmscuy.supabase.co'; 
-        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2cnd5bW1zZ3dzdHZ5cW1zY3V5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3NjAxODksImV4cCI6MjA3OTMzNjE4OX0.XNJOD5MzOaM8u_tRuvXZvx2Q_mHUTbk-mAbUFnoU3H4'; 
+           // --- 1. CONFIGURATION ---
+    const clientId = '1f8e5a30d7d4470aa41dd7ba69e4a94f';
+    const redirectUri = 'https://gaetanlollieric.github.io/stats-spotify/index.html';
+    const SUPABASE_URL = 'https://kvrwymmsgwstvyqmscuy.supabase.co'; 
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2cnd5bW1zZ3dzdHZ5cW1zY3V5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3NjAxODksImV4cCI6MjA3OTMzNjE4OX0.XNJOD5MzOaM8u_tRuvXZvx2Q_mHUTbk-mAbUFnoU3H4'; 
+
+    const { createClient } = supabase;
+    const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
     
-        const { createClient } = supabase;
-        const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+    // Scopes nécessaires (dont lecture et modification du playback)
+    const scopes = 'user-top-read user-read-recently-played user-modify-playback-state'; 
+    
+    let currentToken = null;
+    let currentUserId = null;
+    
+    // Données brutes
+    let allHistoryData = []; 
+    let allGenres = new Set();
+    
+    // État des filtres
+    let currentGenre = 'all';
+    let currentPeriod = 'all'; // '7', '30', 'all', 'specific'
+    let currentSpecificDate = null; // YYYY-MM-DD
+    let currentTop10URIs = []; // Pour le bouton Play
+
+    function generateRandomString(l){let t='';const p='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';for(let i=0;i<l;i++)t+=p.charAt(Math.floor(Math.random()*p.length));return t;}
+    async function generateCodeChallenge(v){const e=new TextEncoder();const d=e.encode(v);const dig=await window.crypto.subtle.digest('SHA-256',d);return btoa(String.fromCharCode(...new Uint8Array(dig))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/, '');}
+
+    // --- INITIALISATION ---
+    window.addEventListener('load', async () => {
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get("code");
+        if (code) { await handleSpotifyCallback(code); }
+    });
+
+    document.getElementById('login-btn').addEventListener('click', async () => {
+        const v = generateRandomString(128);
+        const c = await generateCodeChallenge(v);
+        localStorage.setItem("verifier", v);
+        const p = new URLSearchParams({ client_id: clientId, response_type: "code", redirect_uri: redirectUri, scope: scopes, code_challenge_method: "S256", code_challenge: c });
+        document.location = `https://accounts.spotify.com/authorize?${p.toString()}&show_dialog=true`;
+    });
+
+    // --- LOGIN ---
+    async function handleSpotifyCallback(code) {
+        const verifier = localStorage.getItem("verifier");
+        const payload = {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ client_id: clientId, grant_type: 'authorization_code', code: code, redirect_uri: redirectUri, code_verifier: verifier }),
+        };
+
+        const body = await fetch("https://accounts.spotify.com/api/token", payload);
+        const response = await body.json();
         
-        // On ajoute le scope "user-modify-playback-state" pour pouvoir lancer la musique
-        const scopes = 'user-top-read user-read-recently-played user-modify-playback-state'; 
-        
-        let currentToken = null;
-        let currentUserId = null;
-        let allHistoryData = []; 
-        let allGenres = new Set();
-        
-        // Variables pour l'état actuel des filtres
-        let currentGenre = 'all';
-        let currentPeriod = 'all'; // '7', '30', 'all'
-        let currentTop10URIs = []; // Stocke les ID Spotify du Top 10 affiché
-    
-        function generateRandomString(l){let t='';const p='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';for(let i=0;i<l;i++)t+=p.charAt(Math.floor(Math.random()*p.length));return t;}
-        async function generateCodeChallenge(v){const e=new TextEncoder();const d=e.encode(v);const dig=await window.crypto.subtle.digest('SHA-256',d);return btoa(String.fromCharCode(...new Uint8Array(dig))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/, '');}
-    
-        // --- INITIALISATION ---
-        window.addEventListener('load', async () => {
-            const params = new URLSearchParams(window.location.search);
-            const code = params.get("code");
-            if (code) { await handleSpotifyCallback(code); }
-        });
-    
-        document.getElementById('login-btn').addEventListener('click', async () => {
-            const v = generateRandomString(128);
-            const c = await generateCodeChallenge(v);
-            localStorage.setItem("verifier", v);
-            const p = new URLSearchParams({ client_id: clientId, response_type: "code", redirect_uri: redirectUri, scope: scopes, code_challenge_method: "S256", code_challenge: c });
-            document.location = `https://accounts.spotify.com/authorize?${p.toString()}&show_dialog=true`;
-        });
-    
-        // --- LOGIN ---
-        async function handleSpotifyCallback(code) {
-            const verifier = localStorage.getItem("verifier");
-            const payload = {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams({ client_id: clientId, grant_type: 'authorization_code', code: code, redirect_uri: redirectUri, code_verifier: verifier }),
-            };
-    
-            const body = await fetch("https://accounts.spotify.com/api/token", payload);
-            const response = await body.json();
+        if (response.access_token) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+            document.getElementById('login-section').classList.add('hidden');
+            document.getElementById('dashboard').classList.remove('hidden');
             
-            if (response.access_token) {
-                window.history.replaceState({}, document.title, window.location.pathname);
-                document.getElementById('login-section').classList.add('hidden');
-                document.getElementById('dashboard').classList.remove('hidden');
-                
-                currentToken = response.access_token;
-    
-                const resProfile = await fetch("https://api.spotify.com/v1/me", { headers: { Authorization: `Bearer ${currentToken}` } });
-                const profile = await resProfile.json();
-                
-                currentUserId = profile.id;
-                document.getElementById('user-display-name').innerText = profile.display_name;
-    
-                if (response.refresh_token) {
-                    await sb.from('users').upsert({
-                        spotify_id: profile.id,
-                        refresh_token: response.refresh_token,
-                        display_name: profile.display_name,
-                        last_sync: new Date()
-                    });
-                }
-    
-                loadSupabaseStats();
-                loadSpotifyApiStats(currentToken, 'short_term');
-            }
-        }
-    
-        // --- RÉCUPÉRATION DONNÉES SUPABASE ---
-        async function loadSupabaseStats() {
-            if (!currentUserId) return;
-            document.getElementById('db-total-tracks').innerText = "Chargement...";
-    
-            const { data, error } = await sb
-                .from('listening_history')
-                .select(`
-                    played_at,
-                    tracks (
-                        spotify_id,
-                        name,
-                        duration_ms,
-                        artists (
-                            name,
-                            genres
-                        )
-                    )
-                `)
-                .eq('user_id', currentUserId)
-                .order('played_at', { ascending: false });
-    
-            if (error || !data) return;
-    
-            // Aplatir
-            allHistoryData = data.map(item => ({
-                played_at: new Date(item.played_at), // Objet Date pour comparaison facile
-                track_id: item.tracks?.spotify_id,
-                track_name: item.tracks?.name || "Inconnu",
-                artist_name: item.tracks?.artists?.name || "Inconnu",
-                duration_ms: item.tracks?.duration_ms || 0,
-                genres: item.tracks?.artists?.genres || [] 
-            }));
-    
-            // Genres
-            allGenres = new Set();
-            allHistoryData.forEach(d => {
-                if(d.genres) d.genres.forEach(g => allGenres.add(g));
-            });
-    
-            setupTopControls(); // Installe le menu Genre en haut + Boutons Période
-            updateDashboard();  // Premier rendu
-        }
-    
-        // --- INTERFACE & FILTRES ---
-        function setupTopControls() {
-            // 1. Créer le conteneur de contrôle s'il n'existe pas
-            let topBar = document.getElementById('top-controls-bar');
-            if (!topBar) {
-                topBar = document.createElement('div');
-                topBar.id = 'top-controls-bar';
-                topBar.style.display = 'flex';
-                topBar.style.justifyContent = 'space-between';
-                topBar.style.alignItems = 'center';
-                topBar.style.marginBottom = '20px';
-                topBar.style.flexWrap = 'wrap';
-                topBar.style.gap = '10px';
-                
-                // Insérer AVANT la grille de stats
-                const statsGrid = document.querySelector('.stats-grid');
-                statsGrid.parentNode.insertBefore(topBar, statsGrid);
-            }
-            topBar.innerHTML = ''; // Reset
-    
-            // 2. Menu Déroulant GENRE
-            const select = document.createElement('select');
-            select.className = 'filter-btn';
-            select.style.backgroundColor = '#181818';
-            select.style.color = 'white';
-            select.innerHTML = '<option value="all">🎵 Tous les genres</option>';
+            currentToken = response.access_token;
+
+            const resProfile = await fetch("https://api.spotify.com/v1/me", { headers: { Authorization: `Bearer ${currentToken}` } });
+            const profile = await resProfile.json();
             
-            Array.from(allGenres).sort().forEach(g => {
-                const label = g.charAt(0).toUpperCase() + g.slice(1);
-                select.innerHTML += `<option value="${g}">${label}</option>`;
-            });
-    
-            select.value = currentGenre;
-            select.addEventListener('change', (e) => {
-                currentGenre = e.target.value;
-                updateDashboard();
-            });
-    
-            // 3. Boutons PÉRIODE (DB)
-            const periodGroup = document.createElement('div');
-            periodGroup.style.display = 'flex';
-            periodGroup.style.gap = '5px';
-    
-            const periods = [
-                {id: '7', label: '7 Jours'},
-                {id: '30', label: '30 Jours'},
-                {id: 'all', label: 'Tout'}
-            ];
-    
-            periods.forEach(p => {
-                const btn = document.createElement('button');
-                btn.className = 'filter-btn';
-                if (currentPeriod === p.id) btn.classList.add('active');
-                btn.innerText = p.label;
-                btn.onclick = () => {
-                    currentPeriod = p.id;
-                    // Update classes visuelles
-                    Array.from(periodGroup.children).forEach(c => c.classList.remove('active'));
-                    btn.classList.add('active');
-                    updateDashboard();
-                };
-                periodGroup.appendChild(btn);
-            });
-    
-            topBar.appendChild(select);
-            topBar.appendChild(periodGroup);
-        }
-    
-        // --- COEUR DU FILTRAGE ---
-        function updateDashboard() {
-            // 1. Filtrer les données
-            const now = new Date();
-            let filtered = allHistoryData;
-    
-            // Filtre Période
-            if (currentPeriod === '7') {
-                const cutoff = new Date(); cutoff.setDate(now.getDate() - 7);
-                filtered = filtered.filter(d => d.played_at >= cutoff);
-            } else if (currentPeriod === '30') {
-                const cutoff = new Date(); cutoff.setDate(now.getDate() - 30);
-                filtered = filtered.filter(d => d.played_at >= cutoff);
-            }
-    
-            // Filtre Genre
-            if (currentGenre !== 'all') {
-                filtered = filtered.filter(d => d.genres.includes(currentGenre));
-            }
-    
-            renderDashboard(filtered);
-        }
-    
-        // --- AFFICHAGE ---
-        function renderDashboard(data) {
-            const count = data.length;
-            document.getElementById('db-total-tracks').innerText = count;
-    
-            // Temps Total : Format Heures + Minutes
-            let totalMs = data.reduce((acc, item) => acc + item.duration_ms, 0);
-            let totalMinutes = Math.floor(totalMs / 60000);
-            let hours = Math.floor(totalMinutes / 60);
-            let minutes = totalMinutes % 60;
-            
-            // Affichage propre (ex: "2h 05min" ou "45min")
-            let timeString = "";
-            if (hours > 0) {
-                timeString = `${hours}h ${minutes.toString().padStart(2, '0')}min`;
-            } else {
-                timeString = `${minutes}min`;
-            }
-            document.getElementById('db-total-time').innerText = timeString;
-    
-            // Titre Dynamique
-            const titleEl = document.getElementById('top-tracks-title');
-            let genreText = currentGenre === 'all' ? '' : ` ${currentGenre.charAt(0).toUpperCase() + currentGenre.slice(1)}`;
-            let periodText = currentPeriod === 'all' ? `sur les ${count} dernières écoutes` : `sur les ${currentPeriod} derniers jours`;
-            titleEl.innerText = `🏆 Top 10${genreText} (${periodText})`;
-    
-            // Graphique
-            renderHourlyChart(data);
-    
-            // Top 10 Table & Play Button
-            const trackCounts = {};
-            const trackInfos = {}; // Pour garder l'ID Spotify
-    
-            data.forEach(t => {
-                const key = `${t.track_name}###${t.artist_name}`;
-                trackCounts[key] = (trackCounts[key] || 0) + 1;
-                if (!trackInfos[key]) trackInfos[key] = t.track_id;
-            });
-            
-            const sortedTracks = Object.entries(trackCounts)
-                .sort(([,a], [,b]) => b - a)
-                .slice(0, 10);
-    
-            // Sauvegarder les URIs pour le bouton Play
-            currentTop10URIs = sortedTracks
-                .map(([key]) => trackInfos[key])
-                .filter(id => id) // Enlever les nuls
-                .map(id => `spotify:track:${id}`);
-    
-            // Mettre à jour le tableau HTML
-            const tbody = document.getElementById('db-top-tracks');
-            tbody.innerHTML = '';
-            
-            if (sortedTracks.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:20px; color:#666">Aucune musique trouvée.</td></tr>';
-            } else {
-                sortedTracks.forEach(([key, c]) => {
-                    const [name, artist] = key.split('###');
-                    tbody.innerHTML += `<tr><td><strong>${name}</strong></td><td>${artist}</td><td><span class="count-badge">${c}</span></td></tr>`;
+            currentUserId = profile.id;
+            document.getElementById('user-display-name').innerText = profile.display_name;
+
+            if (response.refresh_token) {
+                await sb.from('users').upsert({
+                    spotify_id: profile.id,
+                    refresh_token: response.refresh_token,
+                    display_name: profile.display_name,
+                    last_sync: new Date()
                 });
             }
-    
-            // Ajouter le bouton Play sous le tableau s'il n'existe pas
-            let playBtn = document.getElementById('play-top-10-btn');
-            if (!playBtn) {
-                const container = document.querySelector('.card:has(#db-top-tracks)'); // Astuce CSS moderne, ou mettre ID sur la card
-                // Fallback si :has pas supporté
-                const tableCard = tbody.closest('.card');
+
+            // Chargement des données
+            loadSupabaseStats();
+            loadSpotifyApiStats(currentToken, 'short_term');
+        }
+    }
+
+    // --- RÉCUPÉRATION SUPABASE (JOIN) ---
+    async function loadSupabaseStats() {
+        if (!currentUserId) return;
+        document.getElementById('db-total-tracks').innerText = "Chargement...";
+
+        const { data, error } = await sb
+            .from('listening_history')
+            .select(`
+                played_at,
+                tracks (
+                    spotify_id,
+                    name,
+                    duration_ms,
+                    artists (
+                        name,
+                        genres
+                    )
+                )
+            `)
+            .eq('user_id', currentUserId)
+            .order('played_at', { ascending: false });
+
+        if (error) { console.error(error); return; }
+        if (!data) return;
+
+        // Transformation des données pour usage facile
+        allHistoryData = data.map(item => ({
+            played_at: new Date(item.played_at), // Objet Date natif
+            track_id: item.tracks?.spotify_id,
+            track_name: item.tracks?.name || "Inconnu",
+            artist_name: item.tracks?.artists?.name || "Inconnu",
+            duration_ms: item.tracks?.duration_ms || 0,
+            genres: item.tracks?.artists?.genres || [] 
+        }));
+
+        // Extraction des genres uniques
+        allGenres = new Set();
+        allHistoryData.forEach(d => {
+            if(d.genres) d.genres.forEach(g => allGenres.add(g));
+        });
+
+        setupTopControls();
+        updateDashboard();
+    }
+
+    // --- BARRE DE CONTRÔLE (HAUT) ---
+    function setupTopControls() {
+        let topBar = document.getElementById('top-controls-bar');
+        if (!topBar) {
+            topBar = document.createElement('div');
+            topBar.id = 'top-controls-bar';
+            Object.assign(topBar.style, {
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '20px',
+                flexWrap: 'wrap',
+                gap: '10px'
+            });
+            // Insertion avant les stats
+            const statsGrid = document.querySelector('.stats-grid');
+            statsGrid.parentNode.insertBefore(topBar, statsGrid);
+        }
+        topBar.innerHTML = '';
+
+        // 1. Menu GENRE
+        const select = document.createElement('select');
+        select.className = 'filter-btn';
+        Object.assign(select.style, {
+            backgroundColor: '#181818', color: 'white', border: '1px solid #555'
+        });
+        select.innerHTML = '<option value="all">🎵 Tous les genres</option>';
+        
+        Array.from(allGenres).sort().forEach(g => {
+            const label = g.charAt(0).toUpperCase() + g.slice(1);
+            select.innerHTML += `<option value="${g}">${label}</option>`;
+        });
+
+        select.value = currentGenre;
+        select.addEventListener('change', (e) => {
+            currentGenre = e.target.value;
+            updateDashboard();
+        });
+
+        // 2. Groupe PÉRIODE
+        const periodGroup = document.createElement('div');
+        periodGroup.style.display = 'flex';
+        periodGroup.style.gap = '5px';
+        periodGroup.style.alignItems = 'center';
+
+        const periods = [
+            {id: '7', label: '7 Jours'},
+            {id: '30', label: '30 Jours'},
+            {id: 'all', label: 'Tout'}
+        ];
+
+        periods.forEach(p => {
+            const btn = document.createElement('button');
+            btn.className = 'filter-btn';
+            if (currentPeriod === p.id) btn.classList.add('active');
+            btn.innerText = p.label;
+            btn.onclick = () => {
+                currentPeriod = p.id;
+                currentSpecificDate = null;
+                // Gestion visuelle
+                Array.from(periodGroup.querySelectorAll('button')).forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                // Reset Date
+                const dateInput = document.getElementById('date-picker');
+                if(dateInput) { dateInput.value = ''; dateInput.style.borderColor = '#555'; }
                 
-                playBtn = document.createElement('button');
-                playBtn.id = 'play-top-10-btn';
-                playBtn.className = 'btn-spotify';
-                playBtn.style.marginTop = '20px';
-                playBtn.style.width = '100%';
-                playBtn.style.fontSize = '1rem';
-                playBtn.onclick = playTop10;
-                tableCard.appendChild(playBtn);
+                updateDashboard();
+            };
+            periodGroup.appendChild(btn);
+        });
+
+        // 3. Calendrier DATE EXACTE
+        const dateInput = document.createElement('input');
+        dateInput.type = 'date';
+        dateInput.id = 'date-picker';
+        Object.assign(dateInput.style, {
+            backgroundColor: '#181818', color: 'white', border: '1px solid #555',
+            padding: '5px', borderRadius: '20px', fontFamily: 'inherit', cursor: 'pointer'
+        });
+
+        dateInput.addEventListener('change', (e) => {
+            if (e.target.value) {
+                currentPeriod = 'specific';
+                currentSpecificDate = e.target.value;
+                // Désactive les boutons classiques
+                Array.from(periodGroup.querySelectorAll('button')).forEach(b => b.classList.remove('active'));
+                dateInput.style.borderColor = '#1DB954'; // Vert actif
+                updateDashboard();
             }
-            playBtn.innerText = `▶️ Lancer ce Top 10 (${currentTop10URIs.length} titres)`;
-            
-            // Cacher le bouton si liste vide
-            playBtn.style.display = currentTop10URIs.length > 0 ? 'block' : 'none';
+        });
+
+        periodGroup.appendChild(dateInput);
+
+        topBar.appendChild(select);
+        topBar.appendChild(periodGroup);
+    }
+
+    // --- FILTRAGE INTELLIGENT ---
+    function updateDashboard() {
+        const now = new Date();
+        let filtered = allHistoryData;
+
+        // Filtre Période
+        if (currentPeriod === 'specific' && currentSpecificDate) {
+            filtered = filtered.filter(d => {
+                // On extrait la partie YYYY-MM-DD de l'objet Date
+                const trackDate = d.played_at.toISOString().split('T')[0];
+                return trackDate === currentSpecificDate;
+            });
+        } 
+        else if (currentPeriod === '7') {
+            const cutoff = new Date(); cutoff.setDate(now.getDate() - 7);
+            filtered = filtered.filter(d => d.played_at >= cutoff);
+        } 
+        else if (currentPeriod === '30') {
+            const cutoff = new Date(); cutoff.setDate(now.getDate() - 30);
+            filtered = filtered.filter(d => d.played_at >= cutoff);
         }
-    
-        // --- FONCTION PLAY (API) ---
-        async function playTop10() {
-            if (!currentToken) return alert("Non connecté");
-            if (currentTop10URIs.length === 0) return alert("Aucun titre à jouer");
-    
-            // 1. Vérifier si un device est actif
-            const devicesRes = await fetch('https://api.spotify.com/v1/me/player/devices', {
-                headers: { Authorization: `Bearer ${currentToken}` }
-            });
-            const devices = await devicesRes.json();
-            
-            if (!devices.devices || devices.devices.length === 0) {
-                return alert("⚠️ Aucun appareil Spotify détecté.\n\nOuvrez Spotify sur votre PC ou téléphone et réessayez !");
-            }
-    
-            // 2. Lancer la lecture
-            // On prend le premier device actif, ou le premier de la liste
-            const activeDevice = devices.devices.find(d => d.is_active) || devices.devices[0];
-            
-            const playRes = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${activeDevice.id}`, {
-                method: 'PUT',
-                headers: { 
-                    Authorization: `Bearer ${currentToken}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    uris: currentTop10URIs
-                })
-            });
-    
-            if (playRes.status === 204) {
-                alert(`✅ Lecture lancée sur ${activeDevice.name} !`);
-            } else {
-                const err = await playRes.json();
-                console.error(err);
-                alert("Erreur lors du lancement (Avez-vous Spotify Premium ?)");
-            }
+
+        // Filtre Genre
+        if (currentGenre !== 'all') {
+            filtered = filtered.filter(d => d.genres.includes(currentGenre));
         }
-    
-        // --- GRAPHIQUE (Reste identique) ---
-        function renderHourlyChart(data) {
-            const hoursBuckets = new Array(24).fill(0);
-            data.forEach(item => {
-                // item.played_at est déjà un objet Date grâce au map initial
-                if (!isNaN(item.played_at.getTime())) {
-                    hoursBuckets[item.played_at.getHours()]++;
-                }
+
+        renderDashboard(filtered);
+    }
+
+    // --- AFFICHAGE GLOBAL ---
+    function renderDashboard(data) {
+        const count = data.length;
+        document.getElementById('db-total-tracks').innerText = count;
+
+        // Temps (Heures Minutes)
+        let totalMs = data.reduce((acc, item) => acc + item.duration_ms, 0);
+        let totalMinutes = Math.floor(totalMs / 60000);
+        let hours = Math.floor(totalMinutes / 60);
+        let minutes = totalMinutes % 60;
+        
+        let timeString = "";
+        if (hours > 0) {
+            timeString = `${hours}h ${minutes.toString().padStart(2, '0')}min`;
+        } else {
+            timeString = `${minutes}min`;
+        }
+        document.getElementById('db-total-time').innerText = timeString;
+
+        // Titre Dynamique
+        const titleEl = document.getElementById('top-tracks-title');
+        let genreText = currentGenre === 'all' ? '' : ` ${currentGenre.charAt(0).toUpperCase() + currentGenre.slice(1)}`;
+        
+        let periodText = "";
+        if (currentPeriod === 'specific' && currentSpecificDate) {
+            const [y, m, d] = currentSpecificDate.split('-');
+            periodText = `le ${d}/${m}/${y}`;
+        } else if (currentPeriod === 'all') {
+            periodText = `sur les ${count} dernières écoutes`;
+        } else {
+            periodText = `sur les ${currentPeriod} derniers jours`;
+        }
+
+        titleEl.innerText = `🏆 Top 10${genreText} (${periodText})`;
+
+        // Graphique
+        renderHourlyChart(data);
+
+        // Top 10 & Play Button
+        const trackCounts = {};
+        const trackInfos = {}; 
+
+        data.forEach(t => {
+            const key = `${t.track_name}###${t.artist_name}`;
+            trackCounts[key] = (trackCounts[key] || 0) + 1;
+            // On garde le premier ID trouvé pour ce titre
+            if (!trackInfos[key]) trackInfos[key] = t.track_id;
+        });
+        
+        const sortedTracks = Object.entries(trackCounts)
+            .sort(([,a], [,b]) => b - a)
+            .slice(0, 10);
+
+        // Préparer la playlist pour le bouton Play
+        currentTop10URIs = sortedTracks
+            .map(([key]) => trackInfos[key])
+            .filter(id => id)
+            .map(id => `spotify:track:${id}`);
+
+        // Remplir le tableau HTML
+        const tbody = document.getElementById('db-top-tracks');
+        tbody.innerHTML = '';
+        
+        if (sortedTracks.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:20px; color:#666">Aucune musique trouvée.</td></tr>';
+        } else {
+            sortedTracks.forEach(([key, c]) => {
+                const [name, artist] = key.split('###');
+                tbody.innerHTML += `<tr><td><strong>${name}</strong></td><td>${artist}</td><td><span class="count-badge">${c}</span></td></tr>`;
             });
-    
-            const ctx = document.getElementById('hourlyChart').getContext('2d');
-            if (window.myHourlyChart instanceof Chart) window.myHourlyChart.destroy();
-    
-            window.myHourlyChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: [...Array(24).keys()].map(h => h + 'h'),
-                    datasets: [{ 
-                        label: 'Titres écoutés', 
-                        data: hoursBuckets, 
-                        backgroundColor: '#3b82f6',
-                        borderRadius: 4
-                    }]
-                },
-                options: { 
-                    responsive: true, 
-                    maintainAspectRatio: false, 
-                    plugins: { legend: {display:false} }, 
-                    scales: { 
-                        x: {grid:{display:false}, ticks:{color:'#b3b3b3'}}, 
-                        y: {grid:{color:'#333'}, ticks:{color:'#b3b3b3'}} 
-                    } 
-                }
-            });
+        }
+
+        // Gestion du Bouton Play
+        let playBtn = document.getElementById('play-top-10-btn');
+        if (!playBtn) {
+            // On cherche la card parente pour insérer le bouton proprement
+            const tableCard = document.querySelector('.track-table').closest('.card');
+            playBtn = document.createElement('button');
+            playBtn.id = 'play-top-10-btn';
+            playBtn.className = 'btn-spotify';
+            playBtn.style.marginTop = '20px';
+            playBtn.style.width = '100%';
+            playBtn.style.fontSize = '1rem';
+            playBtn.onclick = playTop10;
+            tableCard.appendChild(playBtn);
         }
         
-        // --- API SPOTIFY BAS DE PAGE (Reste identique) ---
-        window.changeRange = function(range, btn) {
-            if (!currentToken) return alert("Connectez-vous d'abord");
-            // Reset des boutons du bas uniquement
-            const bottomControls = btn.parentNode;
-            Array.from(bottomControls.children).forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            loadSpotifyApiStats(currentToken, range);
+        if (currentTop10URIs.length > 0) {
+            playBtn.style.display = 'block';
+            playBtn.innerText = `▶️ Lancer ce Top 10 (${currentTop10URIs.length} titres)`;
+        } else {
+            playBtn.style.display = 'none';
         }
-    
-        async function loadSpotifyApiStats(token, range) {
-            const headers = { Authorization: `Bearer ${token}` };
-            const [artRes, trkRes] = await Promise.all([
-                fetch(`https://api.spotify.com/v1/me/top/artists?time_range=${range}&limit=10`, { headers }),
-                fetch(`https://api.spotify.com/v1/me/top/tracks?time_range=${range}&limit=10`, { headers })
-            ]);
-            const artists = await artRes.json();
-            const tracks = await trkRes.json();
-            
-            const al = document.getElementById('api-artists'); al.innerHTML='';
-            if(artists.items) artists.items.forEach(i => al.innerHTML += `<li>${i.name}</li>`);
-            
-            const tl = document.getElementById('api-tracks'); tl.innerHTML='';
-            if(tracks.items) tracks.items.forEach(i => tl.innerHTML += `<li>${i.name} - <span style="color:#3b82f6">${i.artists[0].name}</span></li>`);
+    }
+
+    // --- FONCTION LECTURE SPOTIFY ---
+    async function playTop10() {
+        if (!currentToken) return alert("Non connecté");
+        if (currentTop10URIs.length === 0) return alert("Aucun titre à jouer");
+
+        // 1. Chercher un device actif
+        const devicesRes = await fetch('https://api.spotify.com/v1/me/player/devices', {
+            headers: { Authorization: `Bearer ${currentToken}` }
+        });
+        const devices = await devicesRes.json();
+        
+        if (!devices.devices || devices.devices.length === 0) {
+            return alert("⚠️ Aucun appareil Spotify détecté.\n\nOuvrez Spotify sur votre PC ou téléphone et réessayez !");
         }
+
+        const activeDevice = devices.devices.find(d => d.is_active) || devices.devices[0];
+        
+        // 2. Lancer la commande Play
+        const playRes = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${activeDevice.id}`, {
+            method: 'PUT',
+            headers: { 
+                Authorization: `Bearer ${currentToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                uris: currentTop10URIs
+            })
+        });
+
+        if (playRes.status === 204) {
+            // Petit feedback visuel sympa
+            const btn = document.getElementById('play-top-10-btn');
+            const originalText = btn.innerText;
+            btn.innerText = `✅ Lecture lancée sur ${activeDevice.name}...`;
+            setTimeout(() => btn.innerText = originalText, 3000);
+        } else {
+            const err = await playRes.json();
+            console.error(err);
+            alert("Erreur lors du lancement (Avez-vous Spotify Premium ?)");
+        }
+    }
+
+    // --- GRAPHIQUE ---
+    function renderHourlyChart(data) {
+        const hoursBuckets = new Array(24).fill(0);
+        data.forEach(item => {
+            if (!isNaN(item.played_at.getTime())) {
+                hoursBuckets[item.played_at.getHours()]++;
+            }
+        });
+
+        const ctx = document.getElementById('hourlyChart').getContext('2d');
+        if (window.myHourlyChart instanceof Chart) window.myHourlyChart.destroy();
+
+        window.myHourlyChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: [...Array(24).keys()].map(h => h + 'h'),
+                datasets: [{ 
+                    label: 'Titres écoutés', 
+                    data: hoursBuckets, 
+                    backgroundColor: '#3b82f6',
+                    borderRadius: 4
+                }]
+            },
+            options: { 
+                responsive: true, maintainAspectRatio: false, 
+                plugins: { legend: {display:false} }, 
+                scales: { 
+                    x: {grid:{display:false}, ticks:{color:'#b3b3b3'}}, 
+                    y: {grid:{color:'#333'}, ticks:{color:'#b3b3b3'}} 
+                } 
+            }
+        });
+    }
+
+    // --- API SPOTIFY BAS DE PAGE ---
+    window.changeRange = function(range, btn) {
+        if (!currentToken) return alert("Connectez-vous d'abord");
+        const bottomControls = btn.parentNode;
+        Array.from(bottomControls.children).forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        loadSpotifyApiStats(currentToken, range);
+    }
+
+    async function loadSpotifyApiStats(token, range) {
+        const headers = { Authorization: `Bearer ${token}` };
+        const [artRes, trkRes] = await Promise.all([
+            fetch(`https://api.spotify.com/v1/me/top/artists?time_range=${range}&limit=10`, { headers }),
+            fetch(`https://api.spotify.com/v1/me/top/tracks?time_range=${range}&limit=10`, { headers })
+        ]);
+        const artists = await artRes.json();
+        const tracks = await trkRes.json();
+        
+        const al = document.getElementById('api-artists'); al.innerHTML='';
+        if(artists.items) artists.items.forEach(i => al.innerHTML += `<li>${i.name}</li>`);
+        
+        const tl = document.getElementById('api-tracks'); tl.innerHTML='';
+        if(tracks.items) tracks.items.forEach(i => tl.innerHTML += `<li>${i.name} - <span style="color:#3b82f6">${i.artists[0].name}</span></li>`);
+    }
+
 
     </script>
 </body>
 </html>
+
 
 
 
