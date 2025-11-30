@@ -227,24 +227,61 @@
     }
 
     // --- SUPABASE DATA ---
+        // --- RÉCUPÉRATION SUPABASE (AVEC BOUCLE INFINIE) ---
     async function loadSupabaseStats(targetId) {
         if (!targetId) return;
         document.getElementById('db-total-tracks').innerText = "Chargement...";
         
         // Reset
-        allHistoryData = []; allGenres = new Set(); currentGenre = 'all'; currentDayFilter = null;
+        allHistoryData = [];
+        allGenres = new Set();
+        currentGenre = 'all'; 
+        currentDayFilter = null;
 
-        const { data, error } = await sb
-            .from('listening_history')
-            .select(`played_at, tracks (spotify_id, name, duration_ms, artists (name, genres))`)
-            .eq('user_id', targetId)
-            .order('played_at', { ascending: false })
-            .limit(50000); // Limite augmentée
+        let allFetchedData = [];
+        let from = 0;
+        const step = 1000; // On charge par paquet de 1000
+        let keepFetching = true;
 
-        if (error) { console.error(error); return; }
-        if (!data) { renderDashboard([]); return; }
+        // BOUCLE DE CHARGEMENT
+        while (keepFetching) {
+            // Petit feedback visuel si ça prend du temps
+            if (from > 0) document.getElementById('db-total-tracks').innerText = `Chargement... (${from} récupérés)`;
 
-        allHistoryData = data.map(item => ({
+            const { data, error } = await sb
+                .from('listening_history')
+                .select(`
+                    played_at,
+                    tracks (
+                        spotify_id,
+                        name,
+                        duration_ms,
+                        artists (
+                            name,
+                            genres
+                        )
+                    )
+                `)
+                .eq('user_id', targetId)
+                .order('played_at', { ascending: false })
+                .range(from, from + step - 1); // <--- C'est ça qui permet de "tourner la page"
+
+            if (error) { console.error(error); keepFetching = false; break; }
+            
+            if (data && data.length > 0) {
+                allFetchedData = allFetchedData.concat(data);
+                from += step;
+                // Si on a reçu moins de 1000 lignes, c'est qu'on est arrivé à la fin
+                if (data.length < step) keepFetching = false;
+            } else {
+                keepFetching = false; // Plus rien à charger
+            }
+        }
+
+        if (!allFetchedData.length) { renderDashboard([]); return; }
+
+        // Traitement des données
+        allHistoryData = allFetchedData.map(item => ({
             played_at: new Date(item.played_at),
             track_id: item.tracks?.spotify_id,
             track_name: item.tracks?.name || "Inconnu",
@@ -254,9 +291,11 @@
         }));
 
         allGenres = new Set();
-        allHistoryData.forEach(d => { if(d.genres) d.genres.forEach(g => allGenres.add(g)); });
+        allHistoryData.forEach(d => {
+            if(d.genres) d.genres.forEach(g => allGenres.add(g));
+        });
 
-        setupTopControls();
+        setupTopControls(); 
         updateDashboard();
     }
 
@@ -618,4 +657,5 @@
     </script>
 </body>
 </html>
+
 
