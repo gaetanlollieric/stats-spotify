@@ -226,37 +226,26 @@
         if (data) { allUsersList = data; setupUserSelector(); }
     }
 
-    // --- SUPABASE DATA (AVEC BOUCLE) ---
-    async function loadSupabaseStats(targetId) {
+        async function loadSupabaseStats(targetId) {
         if (!targetId) return;
         document.getElementById('db-total-tracks').innerText = "Chargement...";
         
-        allHistoryData = []; allGenres = new Set(); currentGenre = 'all'; 
-        currentDayFilter = null; currentChartMode = 'daily'; // Reset vue
+        // Reset
+        allHistoryData = []; allGenres = new Set(); 
+        // Ne PAS reset currentPeriod ici pour garder ton choix
+        
+        // Requête simple mais puissante (jusqu'à 50k lignes)
+        const { data, error } = await sb
+            .from('listening_history')
+            .select(`played_at, tracks (spotify_id, name, duration_ms, artists (name, genres))`)
+            .eq('user_id', targetId)
+            .order('played_at', { ascending: false })
+            .limit(50000); // Suffisant pour 99% des cas
 
-        let allFetchedData = [];
-        let from = 0;
-        const step = 1000;
-        let keepFetching = true;
+        if (error) { console.error(error); return; }
+        if (!data) { renderDashboard([]); return; }
 
-        while (keepFetching) {
-            const { data, error } = await sb
-                .from('listening_history')
-                .select(`played_at, tracks (spotify_id, name, duration_ms, artists (name, genres))`)
-                .eq('user_id', targetId)
-                .order('played_at', { ascending: false })
-                .range(from, from + step - 1);
-
-            if (error) { console.error(error); keepFetching = false; break; }
-            
-            if (data && data.length > 0) {
-                allFetchedData = allFetchedData.concat(data);
-                from += step;
-                if (data.length < step) keepFetching = false;
-            } else { keepFetching = false; }
-        }
-
-        allHistoryData = allFetchedData.map(item => ({
+        allHistoryData = data.map(item => ({
             played_at: new Date(item.played_at),
             track_id: item.tracks?.spotify_id,
             track_name: item.tracks?.name || "Inconnu",
@@ -271,6 +260,7 @@
         setupTopControls();
         updateDashboard();
     }
+
 
     // --- TOP CONTROLS BAR ---
     function setupTopControls() {
@@ -629,6 +619,7 @@
     </script>
 </body>
 </html>
+
 
 
 
