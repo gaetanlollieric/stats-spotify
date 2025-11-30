@@ -23,7 +23,7 @@
         
         /* Stats Cards */
         .stats-grid {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); /* Plus petit pour en mettre 3 */
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 20px; margin-bottom: 40px;
         }
         .card {
@@ -31,7 +31,7 @@
             border-top: 4px solid var(--blue-accent); box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         }
         .card.green { border-top-color: var(--spotify-green); }
-        .card.purple { border-top-color: var(--purple-accent); } /* Pour les titres uniques */
+        .card.purple { border-top-color: var(--purple-accent); }
         
         .big-stat { font-size: 2.5rem; font-weight: bold; margin: 10px 0; }
         .stat-label { color: #b3b3b3; font-size: 0.9rem; }
@@ -92,7 +92,7 @@
                 <div class="stat-label">Écoutes Totales</div>
                 <div class="big-stat" id="db-total-tracks">...</div>
             </div>
-            <div class="card purple"> <!-- Nouvelle Stat -->
+            <div class="card purple">
                 <div class="stat-label">Titres Uniques</div>
                 <div class="big-stat" id="db-unique-tracks">...</div>
             </div>
@@ -102,7 +102,7 @@
             </div>
         </div>
 
-        <!-- Graphique Rythme (Semaine/Heure) -->
+        <!-- Graphique Rythme -->
         <div class="card">
             <div class="chart-header">
                 <h2>📊 Votre Rythme</h2>
@@ -112,7 +112,7 @@
                 </div>
             </div>
             <div class="chart-wrapper">
-                <canvas id="mainChart"></canvas>
+                anvas id="mainChart"></canvas>
             </div>
             <p style="text-align:center; font-size:0.8rem; color:#666; margin-top:5px;">(Cliquez sur une barre pour filtrer le Top 10 ci-dessous !)</p>
         </div>
@@ -142,7 +142,7 @@
     </div>
 
     <script>
-        // --- 1. CONFIGURATION ---
+    // --- 1. CONFIGURATION ---
     const clientId = '1f8e5a30d7d4470aa41dd7ba69e4a94f';
     const redirectUri = 'https://gaetanlollieric.github.io/stats-spotify/index.html';
     const SUPABASE_URL = 'https://kvrwymmsgwstvyqmscuy.supabase.co'; 
@@ -163,10 +163,10 @@
     
     // FILTRES ÉTAT
     let currentGenre = 'all';
-    let currentPeriod = '7'; // Par défaut 7 jours
+    let currentPeriod = '7'; 
     let currentSpecificValue = null; 
-    let currentChartMode = 'daily'; // 'daily' ou 'hourly'
-    let currentDayFilter = null; // Stocke le jour cliqué (0=Dimanche, 1=Lundi...)
+    let currentChartMode = 'daily'; 
+    let currentDayFilter = null; 
 
     let currentTop10URIs = []; 
 
@@ -226,24 +226,23 @@
         if (data) { allUsersList = data; setupUserSelector(); }
     }
 
-        async function loadSupabaseStats(targetId) {
+    // --- SUPABASE DATA (MODE STABLE - LIMIT 50K) ---
+    async function loadSupabaseStats(targetId) {
         if (!targetId) return;
         document.getElementById('db-total-tracks').innerText = "Chargement...";
         
-        // Reset
-        allHistoryData = []; allGenres = new Set(); 
-        // Ne PAS reset currentPeriod ici pour garder ton choix
-        
-        // Requête simple mais puissante (jusqu'à 50k lignes)
+        allHistoryData = []; allGenres = new Set(); currentGenre = 'all'; 
+        currentDayFilter = null; currentChartMode = 'daily'; 
+
         const { data, error } = await sb
             .from('listening_history')
             .select(`played_at, tracks (spotify_id, name, duration_ms, artists (name, genres))`)
             .eq('user_id', targetId)
             .order('played_at', { ascending: false })
-            .limit(50000); // Suffisant pour 99% des cas
+            .limit(50000); // Pas de boucle while ici, juste un gros fetch stable.
 
-        if (error) { console.error(error); return; }
-        if (!data) { renderDashboard([]); return; }
+        if (error) { console.error(error); document.getElementById('db-total-tracks').innerText = "Erreur"; return; }
+        if (!data || data.length === 0) { renderDashboard([]); return; }
 
         allHistoryData = data.map(item => ({
             played_at: new Date(item.played_at),
@@ -260,7 +259,6 @@
         setupTopControls();
         updateDashboard();
     }
-
 
     // --- TOP CONTROLS BAR ---
     function setupTopControls() {
@@ -327,7 +325,7 @@
 
         weekInput.onchange = (e) => {
             if(e.target.value) {
-                currentSpecificValue = e.target.value; // ex: "2025-W48"
+                currentSpecificValue = e.target.value;
                 weekBtn.classList.add('active');
                 updateDashboard();
             }
@@ -343,8 +341,6 @@
         document.querySelectorAll('.controls button, #top-controls-bar button').forEach(b => b.classList.remove('active'));
         const d = document.getElementById('date-picker'); if(d) { d.value=''; d.style.borderColor='#555'; }
         const w = document.getElementById('week-picker'); if(w) { w.style.display='none'; w.value=''; }
-        
-        // IMPORTANT : Si on change de période, on remet le graphique en mode Jours et on enlève le filtre Jour
         currentDayFilter = null;
         switchChartMode('daily'); 
     }
@@ -354,7 +350,7 @@
         const now = new Date();
         let filtered = allHistoryData;
 
-        // 1. Filtre Temps
+        // Filtre Temps
         if (currentPeriod === 'specific_date' && currentSpecificValue) {
             filtered = filtered.filter(d => d.played_at.toISOString().split('T')[0] === currentSpecificValue);
         } 
@@ -362,8 +358,6 @@
             const [yearStr, weekStr] = currentSpecificValue.split('-W');
             const year = parseInt(yearStr);
             const week = parseInt(weekStr);
-            
-            // Calcul simple du début de la semaine ISO (approximatif mais suffisant)
             const simpleDate = new Date(year, 0, 1 + (week - 1) * 7);
             const dow = simpleDate.getDay();
             const ISOweekStart = simpleDate;
@@ -384,14 +378,13 @@
             filtered = filtered.filter(d => d.played_at >= cutoff);
         }
 
-        // 2. Filtre Genre
+        // Filtre Genre
         if (currentGenre !== 'all') {
             filtered = filtered.filter(d => d.genres.includes(currentGenre));
         }
 
-        // 3. Filtre Graphique (Drill-down jour)
+        // Filtre Graphique (Drill-down jour)
         if (currentDayFilter !== null) {
-            // On ne garde QUE le jour cliqué
             filtered = filtered.filter(d => d.played_at.getDay() === currentDayFilter);
         }
 
@@ -403,7 +396,6 @@
         const count = data.length;
         document.getElementById('db-total-tracks').innerText = count;
 
-        // Temps
         let totalMs = data.reduce((acc, item) => acc + item.duration_ms, 0);
         let totalMinutes = Math.floor(totalMs / 60000);
         let hours = Math.floor(totalMinutes / 60);
@@ -413,22 +405,17 @@
         const uniqueSet = new Set(data.map(d => d.track_id));
         document.getElementById('db-unique-tracks').innerText = uniqueSet.size;
 
-        // Titre Dynamique
         const titleEl = document.getElementById('top-tracks-title');
         let info = `(${count} écoutes)`;
         if (currentPeriod === 'specific_week') info = `(${currentSpecificValue})`;
-        
-        // Ajout info jour si filtré
         if (currentDayFilter !== null) {
             const days = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
             info += ` • ${days[currentDayFilter]}`;
         }
-        
         titleEl.innerText = `🏆 Top 10 ${currentGenre!=='all'?currentGenre:''} ${info}`;
 
         renderChart(data);
 
-        // Top 10 Table
         const trackCounts = {}; const trackInfos = {}; 
         data.forEach(t => {
             const key = `${t.track_name}###${t.artist_name}`;
@@ -450,23 +437,13 @@
         setupPlayButton();
     }
 
-    // --- CHART MANAGER (DRILL DOWN LOGIC) ---
+    // --- CHART MANAGER ---
     function switchChartMode(mode) {
         currentChartMode = mode;
-        // Boutons visuels
         document.getElementById('btn-chart-daily').classList.toggle('active', mode === 'daily');
         document.getElementById('btn-chart-hourly').classList.toggle('active', mode === 'hourly');
-        
-        if (mode === 'daily') {
-            // Si on repasse en mode Jours manuellement, on enlève le filtre jour
-            currentDayFilter = null;
-            updateDashboard(); // Re-calcule tout
-        } else {
-            // Si on passe en mode Heure manuellement, on garde les données telles quelles
-            // mais on change juste l'affichage graph.
-            // (Note: updateDashboard appelle renderChart, donc ça va se dessiner)
-            updateDashboard();
-        }
+        if (mode === 'daily') { currentDayFilter = null; updateDashboard(); }
+        else { updateDashboard(); }
     }
 
     function renderChart(data) {
@@ -479,19 +456,16 @@
         let barColor = (displayedUserId === currentUserId) ? '#3b82f6' : '#e91429';
 
         if (currentChartMode === 'hourly') {
-            // MODE HEURE (0h - 23h)
             labels = [...Array(24).keys()].map(h => h + 'h');
             counts = new Array(24).fill(0);
             data.forEach(d => counts[d.played_at.getHours()]++);
             backgroundColors = labels.map(() => barColor);
         } else {
-            // MODE JOURS (Lundi - Dimanche)
             labels = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
             counts = new Array(7).fill(0);
-            
             data.forEach(d => {
-                let jsDay = d.played_at.getDay(); // 0=Dim, 1=Lun
-                let index = jsDay === 0 ? 6 : jsDay - 1; // Mapping pour avoir Lun en premier
+                let jsDay = d.played_at.getDay(); 
+                let index = jsDay === 0 ? 6 : jsDay - 1; 
                 counts[index]++;
             });
             backgroundColors = labels.map(() => barColor);
@@ -508,18 +482,11 @@
                 plugins: { legend: {display:false} },
                 scales: { x: {grid:{display:false}, ticks:{color:'#b3b3b3'}}, y: {grid:{color:'#333'}, ticks:{color:'#b3b3b3'}} },
                 onClick: (evt, elements) => {
-                    if (elements.length > 0) {
-                        // SI on est en mode JOURS, le clic déclenche le mode HEURES
-                        if (currentChartMode === 'daily') {
-                            const index = elements[0].index;
-                            // On convertit l'index du graph (0=Lun) en jour JS (1=Lun)
-                            // Index: 0(Lun), 1(Mar), 2(Mer), 3(Jeu), 4(Ven), 5(Sam), 6(Dim)
-                            // JsDay: 1(Lun), 2(Mar), 3(Mer), 4(Jeu), 5(Ven), 6(Sam), 0(Dim)
-                            const mapIndexToJs = [1, 2, 3, 4, 5, 6, 0];
-                            
-                            currentDayFilter = mapIndexToJs[index]; // On filtre sur ce jour
-                            switchChartMode('hourly'); // On bascule la vue
-                        }
+                    if (elements.length > 0 && currentChartMode === 'daily') {
+                        const index = elements[0].index;
+                        const mapIndexToJs = [1, 2, 3, 4, 5, 6, 0];
+                        currentDayFilter = mapIndexToJs[index];
+                        switchChartMode('hourly');
                     }
                 }
             }
@@ -619,7 +586,3 @@
     </script>
 </body>
 </html>
-
-
-
-
