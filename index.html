@@ -145,29 +145,6 @@
                 <tbody id="db-top-tracks"></tbody>
             </table>
         </div>
-
-        <!-- NOUVELLE SECTION : ANALYSE AUDIO & HUMEUR -->
-        <h2 style="margin-top:40px;">🧠 Analyse de ton Cerveau</h2>
-        <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));">
-            
-            <!-- RADAR CHART -->
-            <div class="card">
-                <h3>🕸️ Radar Sonore</h3>
-                <div class="chart-wrapper">
-                    <canvas id="radarChart"></canvas>
-                </div>
-                <p class="stat-label" style="text-align:center; margin-top:10px;">Ton profil musical moyen sur la période</p>
-            </div>
-        
-            <!-- MOOD CHART -->
-            <div class="card">
-                <h3>❤️ Humeur du Mois</h3>
-                <div class="chart-wrapper">
-                    <canvas id="moodChart"></canvas>
-                </div>
-                <p class="stat-label" style="text-align:center; margin-top:10px;">Evolution de la positivité (Valence)</p>
-            </div>
-        </div>
         
         <!-- SECTION TIME TRAVEL -->
         <h2 style="margin-top:40px;">⏳ Time Travel</h2>
@@ -334,12 +311,14 @@
         allHistoryData = []; allGenres = new Set(); currentGenre = 'all'; 
         currentDayFilter = null; currentChartMode = 'daily'; 
 
+        // MODIFIE CELA dans loadSupabaseStats
         const { data, error } = await sb
             .from('listening_history')
-            .select(`played_at, tracks (spotify_id, name, duration_ms, valence, energy, danceability, acousticness, instrumentalness, artists (name, genres))`)
+            .select(`played_at, tracks (spotify_id, name, duration_ms, artists (name, genres))`) // J'ai retiré valence, energy, etc.
             .eq('user_id', targetId)
             .order('played_at', { ascending: false })
-            .limit(50000);
+            .limit(50000); // Ou ta logique de pagination
+
 
         if (error) { console.error(error); document.getElementById('db-total-tracks').innerText = "Erreur"; return; }
         if (!data || data.length === 0) { renderDashboard([]); return; }
@@ -350,13 +329,7 @@
             track_name: item.tracks?.name || "Inconnu",
             artist_name: item.tracks?.artists?.name || "Inconnu",
             duration_ms: item.tracks?.duration_ms || 0,
-            genres: item.tracks?.artists?.genres || [],
-            valence: item.tracks?.valence,
-            energy: item.tracks?.energy,
-            danceability: item.tracks?.danceability,
-            acousticness: item.tracks?.acousticness,
-            instrumentalness: item.tracks?.instrumentalness,
-
+            genres: item.tracks?.artists?.genres || []
         }));
 
         allGenres = new Set();
@@ -547,8 +520,6 @@
         });
 
         setupPlayButton();
-        renderRadarChart(data);  // Affiche le Radar
-        renderMoodChart(data);   // Affiche l'Humeur
         renderLoyalty(data);     // Affiche la Fidélité
     }
 
@@ -840,102 +811,7 @@
         
         container.innerHTML = html;
     }
-
-    //ici
-    // --- RADAR CHART ---
-    function renderRadarChart(data) {
-        const ctx = document.getElementById('radarChart').getContext('2d');
-        if (window.radarChartInstance instanceof Chart) window.radarChartInstance.destroy();
-    
-        // Calcul des moyennes (on ignore les nulls)
-        let totals = { energy: 0, danceability: 0, valence: 0, acousticness: 0, instrumentalness: 0 };
-        let count = 0;
-    
-        data.forEach(d => {
-            if (d.energy != null) { // Si la donnée existe
-                totals.energy += d.energy;
-                totals.danceability += d.danceability;
-                totals.valence += d.valence;
-                totals.acousticness += d.acousticness;
-                totals.instrumentalness += d.instrumentalness;
-                count++;
-            }
-        });
-    
-        if (count === 0) return; // Pas de données audio features
-    
-        const avgs = [
-            totals.danceability / count,
-            totals.energy / count,
-            totals.valence / count,
-            totals.instrumentalness / count,
-            totals.acousticness / count
-        ];
-    
-        window.radarChartInstance = new Chart(ctx, {
-            type: 'radar',
-            data: {
-                labels: ['💃 Dansant', '⚡ Energie', '😊 Positivité', '🎻 Instrumental', '🎸 Acoustique'],
-                datasets: [{
-                    label: 'Moyenne',
-                    data: avgs,
-                    backgroundColor: 'rgba(29, 185, 84, 0.2)',
-                    borderColor: '#1DB954',
-                    pointBackgroundColor: '#1DB954',
-                    pointBorderColor: '#fff'
-                }]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                scales: { r: { angleLines: { color: '#333' }, grid: { color: '#333' }, pointLabels: { color: 'white' }, min: 0, max: 1, ticks: { display: false } } }
-            }
-        });
-    }
-    
-    // --- MOOD CHART (Humeur) ---
-    function renderMoodChart(data) {
-        const ctx = document.getElementById('moodChart').getContext('2d');
-        if (window.moodChartInstance instanceof Chart) window.moodChartInstance.destroy();
-    
-        // Grouper par jour et calculer la valence moyenne
-        const moodByDay = {};
-        data.forEach(d => {
-            if (d.valence != null) {
-                const day = getLocalDateString(d.played_at);
-                if (!moodByDay[day]) moodByDay[day] = { sum: 0, count: 0 };
-                moodByDay[day].sum += d.valence;
-                moodByDay[day].count++;
-            }
-        });
-    
-        // Trier les dates
-        const sortedDates = Object.keys(moodByDay).sort().slice(-30); // 30 derniers points dispos
-        const values = sortedDates.map(date => moodByDay[date].sum / moodByDay[date].count);
-    
-        window.moodChartInstance = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: sortedDates,
-                datasets: [{
-                    label: 'Positivité (Valence)',
-                    data: values,
-                    borderColor: '#8b5cf6',
-                    backgroundColor: 'rgba(139, 92, 246, 0.1)',
-                    fill: true,
-                    tension: 0.4
-                }]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: { 
-                    y: { min: 0, max: 1, grid: { color: '#333' } },
-                    x: { display: false } // On cache les dates pour pas surcharger
-                }
-            }
-        });
-    }
-    
+        
     // --- FIDÉLITÉ / EXPLORATION ---
     function renderLoyalty(data) {
         const tbody = document.getElementById('loyalty-table');
@@ -976,6 +852,7 @@
     </script>
 </body>
 </html>
+
 
 
 
