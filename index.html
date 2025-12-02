@@ -208,6 +208,14 @@
     let currentTop10URIs = []; 
 
     // --- INIT ---
+    // Fonction pour avoir la date locale (YYYY-MM-DD) sans décalage UTC
+    function getLocalDateString(dateObj) {
+        const offset = dateObj.getTimezoneOffset() * 60000;
+        const localTime = new Date(dateObj.getTime() - offset);
+        return localTime.toISOString().split('T')[0];
+    }
+
+        
     function generateRandomString(l){let t='';const p='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';for(let i=0;i<l;i++)t+=p.charAt(Math.floor(Math.random()*p.length));return t;}
     async function generateCodeChallenge(v){const e=new TextEncoder();const d=e.encode(v);const dig=await window.crypto.subtle.digest('SHA-256',d);return btoa(String.fromCharCode(...new Uint8Array(dig))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/, '');}
 
@@ -373,9 +381,12 @@
         const now = new Date();
         let filtered = allHistoryData;
 
+        // 1. Filtre Date Spécifique (via Heatmap ou Calendrier)
         if (currentPeriod === 'specific_date' && currentSpecificValue) {
-            filtered = filtered.filter(d => d.played_at.toISOString().split('T')[0] === currentSpecificValue);
+            // CORRECTION ICI : On compare avec la date locale
+            filtered = filtered.filter(d => getLocalDateString(d.played_at) === currentSpecificValue);
         } 
+        // 2. Filtres Périodes classiques
         else if (currentPeriod === '7') {
             const cutoff = new Date(); cutoff.setDate(now.getDate() - 7);
             filtered = filtered.filter(d => d.played_at >= cutoff);
@@ -385,10 +396,12 @@
             filtered = filtered.filter(d => d.played_at >= cutoff);
         }
 
+        // 3. Filtre Genre
         if (currentGenre !== 'all') {
             filtered = filtered.filter(d => d.genres.includes(currentGenre));
         }
 
+        // 4. Filtre Jour de la semaine (Barres du graph)
         if (currentDayFilter !== null) {
             filtered = filtered.filter(d => d.played_at.getDay() === currentDayFilter);
         }
@@ -448,28 +461,37 @@
 
         const counts = {};
         let maxCount = 0;
+        
         data.forEach(d => {
             if (d.played_at.getFullYear() === year) {
-                const dateKey = d.played_at.toISOString().split('T')[0];
+                // CORRECTION ICI : Utiliser l'heure locale pour remplir la heatmap
+                const dateKey = getLocalDateString(d.played_at);
+                
                 counts[dateKey] = (counts[dateKey] || 0) + 1;
                 if (counts[dateKey] > maxCount) maxCount = counts[dateKey];
             }
         });
 
+        // Le reste de la fonction ne change pas...
         const startDate = new Date(year, 0, 1);
         const endDate = new Date(year, 11, 31);
         const startDay = startDate.getDay(); 
-        const dayOffset = startDay === 0 ? 6 : startDay - 1; // 0 for Monday
+        const dayOffset = startDay === 0 ? 6 : startDay - 1; 
 
         for(let i=0; i < dayOffset; i++) {
             const empty = document.createElement('div');
-            empty.className = 'heatmap-cell'; empty.style.opacity = '0';
+            empty.className = 'heatmap-cell level-0'; empty.style.opacity = '0';
             grid.appendChild(empty);
         }
 
         let current = new Date(startDate);
+        // On force l'heure à midi pour éviter les sauts d'heure d'été/hiver lors de l'incrémentation
+        current.setHours(12, 0, 0, 0); 
+
         while (current <= endDate) {
-            const dateKey = current.toISOString().split('T')[0];
+            // CORRECTION ICI AUSSI
+            const dateKey = getLocalDateString(current);
+            
             const count = counts[dateKey] || 0;
             const cell = document.createElement('div');
             
@@ -483,19 +505,37 @@
             }
             
             cell.className = `heatmap-cell level-${level}`;
-            cell.title = `${dateKey}: ${count} écoutes`;
+            cell.title = `${dateKey}: ${count} écoutes`; // Affichage au survol
             
             cell.onclick = () => {
                 const dateInput = document.getElementById('date-picker');
                 if(dateInput) {
+                    // 1. On remplit le champ date visuellement
                     dateInput.value = dateKey;
-                    dateInput.dispatchEvent(new Event('change'));
+                    
+                    // 2. On met à jour les variables globales pour le filtre
+                    currentPeriod = 'specific_date';
+                    currentSpecificValue = dateKey;
+                    
+                    // 3. On active visuellement le champ date (bordure verte)
+                    resetSpecificInputs(); // Nettoie les autres boutons actifs
+                    dateInput.style.borderColor = 'var(--spotify-green)';
+
+                    // 4. On lance la mise à jour du dashboard
+                    updateDashboard();
+                    
+                    // (Optionnel) On scrolle vers le haut pour voir le résultat
+                    document.getElementById('dashboard').scrollIntoView({ behavior: 'smooth' });
                 }
             };
+
             grid.appendChild(cell);
+            
+            // Ajout sûr d'un jour
             current.setDate(current.getDate() + 1);
         }
     }
+
 
     // --- CHART MANAGER ---
     function switchChartMode(mode) {
@@ -646,3 +686,4 @@
     </script>
 </body>
 </html>
+
