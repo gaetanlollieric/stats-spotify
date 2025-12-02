@@ -1,0 +1,34 @@
+name: Run Backfill Script
+
+# Déclencheurs : 
+# - Manuellement (workflow_dispatch)
+# - (Optionnel) Automatiquement toutes les 6h (schedule)
+on:
+  workflow_dispatch: # Permet de lancer le script via un bouton
+  # schedule:
+  #   - cron: '0 */6 * * *' # Décommente pour lancer auto toutes les 6h
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install requests supabase
+
+      - name: Run Backfill
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+        run: python recup.py
