@@ -137,6 +137,64 @@
             </div>
         </div>
 
+        <!-- Classement BDD -->
+        <h2 id="top-tracks-title" style="margin-top:40px;">🏆 Top 10</h2>
+        <div class="card">
+            <table class="track-table">
+                <thead><tr><th>Titre</th><th>Artiste</th><th>Écoutes</th></tr></thead>
+                <tbody id="db-top-tracks"></tbody>
+            </table>
+        </div>
+
+        <!-- NOUVELLE SECTION : ANALYSE AUDIO & HUMEUR -->
+        <h2 style="margin-top:40px;">🧠 Analyse de ton Cerveau</h2>
+        <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));">
+            
+            <!-- RADAR CHART -->
+            <div class="card">
+                <h3>🕸️ Radar Sonore</h3>
+                <div class="chart-wrapper">
+                    <canvas id="radarChart"></canvas>
+                </div>
+                <p class="stat-label" style="text-align:center; margin-top:10px;">Ton profil musical moyen sur la période</p>
+            </div>
+        
+            <!-- MOOD CHART -->
+            <div class="card">
+                <h3>❤️ Humeur du Mois</h3>
+                <div class="chart-wrapper">
+                    <canvas id="moodChart"></canvas>
+                </div>
+                <p class="stat-label" style="text-align:center; margin-top:10px;">Evolution de la positivité (Valence)</p>
+            </div>
+        </div>
+        
+        <!-- SECTION TIME TRAVEL -->
+        <h2 style="margin-top:40px;">⏳ Time Travel</h2>
+        <div class="card">
+            <div class="controls" style="justify-content: center; margin-bottom: 20px;">
+                <button class="filter-btn" onclick="timeTravel('month')">Il y a 1 Mois</button>
+                <button class="filter-btn" onclick="timeTravel('six_months')">Il y a 6 Mois</button>
+                <button class="filter-btn" onclick="timeTravel('year')">Il y a 1 An</button>
+            </div>
+            <div id="time-travel-result" style="text-align:center; min-height: 100px;">
+                <p style="color:#888;">Clique sur un bouton pour voyager dans le temps...</p>
+            </div>
+        </div>
+        
+        <!-- SECTION FIDÉLITÉ ARTISTE -->
+        <h2 style="margin-top:40px;">💎 Fidélité Artiste (Exploration)</h2>
+        <div class="stats-grid">
+            <div class="card" style="grid-column: span 2;">
+                <table class="track-table">
+                    <thead><tr><th>Artiste</th><th>Titres Uniques Écoutés</th><th>Jauge</th></tr></thead>
+                    <tbody id="loyalty-table"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <br><hr style="border-color:#333"><br>
+
         <!-- HEATMAP GITHUB STYLE -->
         <div class="card" style="margin-top: 20px;">
             <div class="chart-header">
@@ -152,18 +210,7 @@
             </div>
             <p style="text-align:center; font-size:0.8rem; color:#666; margin-top:10px;">Plus c'est vert, plus vous avez écouté de musique ce jour-là !</p>
         </div>
-
-        <!-- Classement BDD -->
-        <h2 id="top-tracks-title" style="margin-top:40px;">🏆 Top 10</h2>
-        <div class="card">
-            <table class="track-table">
-                <thead><tr><th>Titre</th><th>Artiste</th><th>Écoutes</th></tr></thead>
-                <tbody id="db-top-tracks"></tbody>
-            </table>
-        </div>
-
-        <br><hr style="border-color:#333"><br>
-
+        
         <!-- Section API Spotify (Bas de page) -->
         <h2>🔥 Vos Tops du Moment (API Direct)</h2>
         <div class="controls">
@@ -288,7 +335,7 @@
 
         const { data, error } = await sb
             .from('listening_history')
-            .select(`played_at, tracks (spotify_id, name, duration_ms, artists (name, genres))`)
+            .select(`played_at, tracks (spotify_id, name, duration_ms, valence, energy, danceability, acousticness, instrumentalness, artists (name, genres))`)
             .eq('user_id', targetId)
             .order('played_at', { ascending: false })
             .limit(50000);
@@ -302,7 +349,13 @@
             track_name: item.tracks?.name || "Inconnu",
             artist_name: item.tracks?.artists?.name || "Inconnu",
             duration_ms: item.tracks?.duration_ms || 0,
-            genres: item.tracks?.artists?.genres || [] 
+            genres: item.tracks?.artists?.genres || [],
+            valence: item.tracks?.valence,
+            energy: item.tracks?.energy,
+            danceability: item.tracks?.danceability,
+            acousticness: item.tracks?.acousticness,
+            instrumentalness: item.tracks?.instrumentalness,
+
         }));
 
         allGenres = new Set();
@@ -493,6 +546,9 @@
         });
 
         setupPlayButton();
+        renderRadarChart(data);  // Affiche le Radar
+        renderMoodChart(data);   // Affiche l'Humeur
+        renderLoyalty(data);     // Affiche la Fidélité
     }
 
     // --- HEATMAP GITHUB STYLE ---
@@ -724,8 +780,201 @@
         const al = document.getElementById('api-artists'); al.innerHTML=''; if(a.items) a.items.forEach(i => al.innerHTML+=`<li>${i.name}</li>`);
         const tl = document.getElementById('api-tracks'); tl.innerHTML=''; if(t.items) t.items.forEach(i => tl.innerHTML+=`<li>${i.name} - <span style="color:#3b82f6">${i.artists[0].name}</span></li>`);
     }
+
+
+
+    async function timeTravel(period) {
+        const container = document.getElementById('time-travel-result');
+        container.innerHTML = '<p>Voyage temporel en cours... 🌀</p>';
+    
+        const date = new Date();
+        let label = "";
+    
+        if (period === 'month') {
+            date.setMonth(date.getMonth() - 1);
+            label = "il y a 1 mois";
+        } else if (period === 'six_months') {
+            date.setMonth(date.getMonth() - 6);
+            label = "il y a 6 mois";
+        } else if (period === 'year') {
+            date.setFullYear(date.getFullYear() - 1);
+            label = "il y a 1 an";
+        }
+    
+        const dateStr = getLocalDateString(date); // Utilise ta fonction existante
+        const prettyDate = date.toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    
+        // On cherche les sons écoutés CE jour-là (start -> end of day)
+        const startOfDay = new Date(dateStr + 'T00:00:00');
+        const endOfDay = new Date(dateStr + 'T23:59:59');
+    
+        const { data, error } = await sb
+            .from('listening_history')
+            .select(`played_at, tracks (name, artists (name))`)
+            .eq('user_id', displayedUserId) // Utilise l'ID affiché
+            .gte('played_at', startOfDay.toISOString())
+            .lte('played_at', endOfDay.toISOString())
+            .order('played_at', { ascending: true });
+    
+        if (error || !data || data.length === 0) {
+            container.innerHTML = `
+                <h3 style="color:#e91429">Rien trouvé 😢</h3>
+                <p>Tu n'as rien écouté le <strong>${prettyDate}</strong> (${label}).</p>
+            `;
+            return;
+        }
+    
+        let html = `<h3>Le ${prettyDate}</h3><ul style="list-style:none; padding:0; text-align:left; max-width:400px; margin:0 auto;">`;
+        
+        // On limite à 10 pour pas faire une liste géante
+        data.slice(0, 15).forEach(item => {
+            const time = new Date(item.played_at).toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'});
+            html += `<li style="border-bottom:1px solid #333; padding:5px 0; display:flex; justify-content:space-between;">
+                <span>${item.tracks.name} <span style="color:#888">- ${item.tracks.artists.name}</span></span>
+                <span style="color:#1DB954; font-size:0.8em;">${time}</span>
+            </li>`;
+        });
+        html += '</ul>';
+        if(data.length > 15) html += `<p style="color:#888; font-size:0.8em; margin-top:5px;">Et ${data.length - 15} autres...</p>`;
+        
+        container.innerHTML = html;
+    }
+
+    //ici
+    // --- RADAR CHART ---
+    function renderRadarChart(data) {
+        const ctx = document.getElementById('radarChart').getContext('2d');
+        if (window.radarChartInstance instanceof Chart) window.radarChartInstance.destroy();
+    
+        // Calcul des moyennes (on ignore les nulls)
+        let totals = { energy: 0, danceability: 0, valence: 0, acousticness: 0, instrumentalness: 0 };
+        let count = 0;
+    
+        data.forEach(d => {
+            if (d.energy != null) { // Si la donnée existe
+                totals.energy += d.energy;
+                totals.danceability += d.danceability;
+                totals.valence += d.valence;
+                totals.acousticness += d.acousticness;
+                totals.instrumentalness += d.instrumentalness;
+                count++;
+            }
+        });
+    
+        if (count === 0) return; // Pas de données audio features
+    
+        const avgs = [
+            totals.danceability / count,
+            totals.energy / count,
+            totals.valence / count,
+            totals.instrumentalness / count,
+            totals.acousticness / count
+        ];
+    
+        window.radarChartInstance = new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: ['💃 Dansant', '⚡ Energie', '😊 Positivité', '🎻 Instrumental', '🎸 Acoustique'],
+                datasets: [{
+                    label: 'Moyenne',
+                    data: avgs,
+                    backgroundColor: 'rgba(29, 185, 84, 0.2)',
+                    borderColor: '#1DB954',
+                    pointBackgroundColor: '#1DB954',
+                    pointBorderColor: '#fff'
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: { r: { angleLines: { color: '#333' }, grid: { color: '#333' }, pointLabels: { color: 'white' }, min: 0, max: 1, ticks: { display: false } } }
+            }
+        });
+    }
+    
+    // --- MOOD CHART (Humeur) ---
+    function renderMoodChart(data) {
+        const ctx = document.getElementById('moodChart').getContext('2d');
+        if (window.moodChartInstance instanceof Chart) window.moodChartInstance.destroy();
+    
+        // Grouper par jour et calculer la valence moyenne
+        const moodByDay = {};
+        data.forEach(d => {
+            if (d.valence != null) {
+                const day = getLocalDateString(d.played_at);
+                if (!moodByDay[day]) moodByDay[day] = { sum: 0, count: 0 };
+                moodByDay[day].sum += d.valence;
+                moodByDay[day].count++;
+            }
+        });
+    
+        // Trier les dates
+        const sortedDates = Object.keys(moodByDay).sort().slice(-30); // 30 derniers points dispos
+        const values = sortedDates.map(date => moodByDay[date].sum / moodByDay[date].count);
+    
+        window.moodChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: sortedDates,
+                datasets: [{
+                    label: 'Positivité (Valence)',
+                    data: values,
+                    borderColor: '#8b5cf6',
+                    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { 
+                    y: { min: 0, max: 1, grid: { color: '#333' } },
+                    x: { display: false } // On cache les dates pour pas surcharger
+                }
+            }
+        });
+    }
+    
+    // --- FIDÉLITÉ / EXPLORATION ---
+    function renderLoyalty(data) {
+        const tbody = document.getElementById('loyalty-table');
+        tbody.innerHTML = '';
+    
+        // 1. Grouper par Artiste -> Set de IDs uniques
+        const artistMap = {};
+        data.forEach(d => {
+            const artist = d.artist_name;
+            if (!artistMap[artist]) artistMap[artist] = new Set();
+            artistMap[artist].add(d.track_id);
+        });
+    
+        // 2. Convertir en tableau et trier
+        const sortedArtists = Object.entries(artistMap)
+            .map(([name, set]) => ({ name, count: set.size }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5); // Top 5
+    
+        // 3. Afficher
+        const max = sortedArtists[0]?.count || 1;
+        
+        sortedArtists.forEach(a => {
+            const percent = (a.count / max) * 100;
+            tbody.innerHTML += `
+                <tr>
+                    <td>${a.name}</td>
+                    <td><strong>${a.count}</strong> titres distincts</td>
+                    <td style="width: 100px; vertical-align:middle;">
+                        <div style="background:#333; height:6px; border-radius:3px; width:100%;">
+                            <div style="background:#3b82f6; height:100%; border-radius:3px; width:${percent}%"></div>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+    }
     </script>
 </body>
 </html>
+
 
 
