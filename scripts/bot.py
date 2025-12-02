@@ -94,19 +94,43 @@ def process_user(user):
     # --- 3b. (NOUVEAU) Récupération des Audio Features ---
     # Endpoint: /audio-features?ids=...
     audio_features_map = {}
-    if track_ids:
+    
+    # On nettoie la liste des IDs (pas de doublons, pas d'IDs vides)
+    clean_track_ids = list(set([tid for tid in track_ids if tid]))
+    
+    if clean_track_ids:
+        print(f"DEBUG: Tentative de récupération Audio Features pour {len(clean_track_ids)} titres...")
+        
         # Par lots de 100 (limite Spotify pour cet endpoint)
-        for i in range(0, len(track_ids), 100):
-            chunk = track_ids[i:i+100]
-            af_res = requests.get(
-                f"https://api.spotify.com/v1/audio-features?ids={','.join(chunk)}",
-                headers={"Authorization": f"Bearer {access_token}"}
-            )
-            if af_res.status_code == 200:
-                features_list = af_res.json().get("audio_features", [])
-                for f in features_list:
-                    if f: # Parfois Spotify renvoie null pour certains titres
-                        audio_features_map[f["id"]] = f
+        for i in range(0, len(clean_track_ids), 100):
+            chunk = clean_track_ids[i:i+100]
+            ids_string = ','.join(chunk)
+            
+            try:
+                af_res = requests.get(
+                    f"https://api.spotify.com/v1/audio-features?ids={ids_string}",
+                    headers={"Authorization": f"Bearer {access_token}"}
+                )
+                
+                if af_res.status_code == 200:
+                    data_json = af_res.json()
+                    features_list = data_json.get("audio_features", [])
+                    
+                    if features_list:
+                        count_ok = 0
+                        for f in features_list:
+                            if f and "id" in f: # Vérification de sécurité
+                                audio_features_map[f["id"]] = f
+                                count_ok += 1
+                        print(f"DEBUG: Lot {i//100 + 1} -> {count_ok} features récupérés.")
+                    else:
+                        print(f"DEBUG: Lot {i//100 + 1} -> Liste 'audio_features' vide ou nulle.")
+                else:
+                    print(f"❌ Erreur API Audio Features: {af_res.status_code} - {af_res.text}")
+
+            except Exception as e:
+                print(f"❌ Exception lors de l'appel Audio Features: {e}")
+
 
     # --- Construction des listes pour la BDD ---
     for item in tracks_data:
