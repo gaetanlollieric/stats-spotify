@@ -60,10 +60,8 @@
         .heatmap-cell {
             width: 12px; height: 12px; border-radius: 2px; background-color: #2d2d2d;
         }
-        /* Tooltip simple au survol */
         .heatmap-cell:hover { border: 1px solid white; cursor: pointer; }
 
-        /* Niveaux de vert pour la heatmap */
         .level-0 { background-color: #2d2d2d; }
         .level-1 { background-color: #0e4429; }
         .level-2 { background-color: #006d32; }
@@ -305,11 +303,10 @@
         setupTopControls();
         updateDashboard();
         
-        // Appel initial Heatmap
         renderHeatmap(allHistoryData, currentHeatmapYear);
     }
 
-    // --- TOP CONTROLS BAR (SANS SEMAINE) ---
+    // --- TOP CONTROLS BAR ---
     function setupTopControls() {
         let topBar = document.getElementById('top-controls-bar');
         if (!topBar) {
@@ -332,7 +329,7 @@
         select.value = currentGenre;
         select.addEventListener('change', (e) => { currentGenre = e.target.value; updateDashboard(); });
 
-        // Périodes (SANS SEMAINE)
+        // Périodes
         const periodGroup = document.createElement('div');
         periodGroup.style.display = 'flex'; periodGroup.style.gap = '5px'; periodGroup.style.alignItems = 'center';
 
@@ -444,12 +441,11 @@
         setupPlayButton();
     }
 
-    // --- HEATMAP GITHUB STYLE (LOGIQUE) ---
+    // --- HEATMAP GITHUB STYLE ---
     function renderHeatmap(data, year) {
         const grid = document.getElementById('heatmap-grid');
-        grid.innerHTML = ''; // Reset
+        grid.innerHTML = '';
 
-        // 1. Préparer les données : Compter les écoutes par jour (YYYY-MM-DD)
         const counts = {};
         let maxCount = 0;
         data.forEach(d => {
@@ -460,38 +456,25 @@
             }
         });
 
-        // 2. Générer tous les jours de l'année
-        const startDate = new Date(year, 0, 1); // 1er Janvier
-        const endDate = new Date(year, 11, 31); // 31 Décembre
-        
-        // Le tableau GitHub commence souvent le premier Dimanche ou Lundi de l'année.
-        // Pour faire simple : On boucle jour par jour.
-        // Si le 1er janvier n'est pas un dimanche, il faudra peut-être ajouter des cases vides au début pour aligner.
-        
-        // Trouver le jour de la semaine du 1er janv (0=Dim, 1=Lun...)
+        const startDate = new Date(year, 0, 1);
+        const endDate = new Date(year, 11, 31);
         const startDay = startDate.getDay(); 
-        // Pour aligner verticalement (Dimanche en haut ou Lundi en haut), disons Dimanche en haut (Row 1).
-        
-        // Ajouter des cases vides avant le 1er janvier si nécessaire
-        for(let i=0; i<startDay; i++) {
+        const dayOffset = startDay === 0 ? 6 : startDay - 1; // 0 for Monday
+
+        for(let i=0; i < dayOffset; i++) {
             const empty = document.createElement('div');
-            empty.className = 'heatmap-cell level-0';
-            empty.style.opacity = '0'; // Invisible
+            empty.className = 'heatmap-cell'; empty.style.opacity = '0';
             grid.appendChild(empty);
         }
 
-        // Boucle sur toute l'année
         let current = new Date(startDate);
         while (current <= endDate) {
             const dateKey = current.toISOString().split('T')[0];
             const count = counts[dateKey] || 0;
-            
             const cell = document.createElement('div');
             
-            // Déterminer la couleur (0 à 4)
             let level = 0;
             if (count > 0) {
-                // Echelle relative : maxCount
                 const ratio = count / (maxCount || 1); 
                 if (ratio < 0.25) level = 1;
                 else if (ratio < 0.5) level = 2;
@@ -502,20 +485,14 @@
             cell.className = `heatmap-cell level-${level}`;
             cell.title = `${dateKey}: ${count} écoutes`;
             
-            // Clic sur une case -> Filtre le dashboard sur ce jour !
             cell.onclick = () => {
-                // On simule la sélection de date spécifique
                 const dateInput = document.getElementById('date-picker');
                 if(dateInput) {
                     dateInput.value = dateKey;
-                    // Trigger change event manuellement
                     dateInput.dispatchEvent(new Event('change'));
                 }
             };
-
             grid.appendChild(cell);
-            
-            // Jour suivant
             current.setDate(current.getDate() + 1);
         }
     }
@@ -576,6 +553,7 @@
         });
     }
 
+    // --- BOUTON PLAY ---
     function setupPlayButton() {
         let playBtn = document.getElementById('play-top-10-btn');
         if (!playBtn) {
@@ -625,6 +603,7 @@
         finally { setTimeout(() => btn.innerText = originalText, 3000); }
     }
 
+    // --- USER SELECTOR (CORRIGÉ) ---
     function setupUserSelector() {
         let bar = document.getElementById('user-select-bar');
         if (!bar) {
@@ -635,11 +614,11 @@
         
         const sel = document.getElementById('user-switcher');
         allUsersList.forEach(u => {
-            const option = document.createElement('option');
-            opt.value = u.spotify_id;
-            opt.text = u.display_name + (u.spotify_id === currentUserId ? " (Moi)" : "");
-            if (u.spotify_id === currentUserId) opt.selected = true;
-            sel.appendChild(option);
+            const option = document.createElement('option'); // La variable est 'option'
+            option.value = u.spotify_id;
+            option.text = u.display_name + (u.spotify_id === currentUserId ? " (Moi)" : "");
+            if (u.spotify_id === currentUserId) option.selected = true;
+            sel.appendChild(option); // On utilise bien 'option' ici
         });
         sel.onchange = (e) => {
             displayedUserId = e.target.value;
@@ -667,4 +646,3 @@
     </script>
 </body>
 </html>
-
