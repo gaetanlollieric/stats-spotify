@@ -193,8 +193,6 @@
             </div>
         </div>
 
-        <br><hr style="border-color:#333"><br>
-
         <!-- HEATMAP GITHUB STYLE -->
         <div class="card" style="margin-top: 20px;">
             <div class="chart-header">
@@ -210,7 +208,10 @@
             </div>
             <p style="text-align:center; font-size:0.8rem; color:#666; margin-top:10px;">Plus c'est vert, plus vous avez écouté de musique ce jour-là !</p>
         </div>
+
+
         
+        <br><hr style="border-color:#333"><br>
         <!-- Section API Spotify (Bas de page) -->
         <h2>🔥 Vos Tops du Moment (API Direct)</h2>
         <div class="controls">
@@ -223,6 +224,12 @@
             <div class="card"><h3>Top Titres</h3><ol id="api-tracks"></ol></div>
         </div>
     </div>
+
+    <button onclick="syncAudioFeatures()" class="btn-spotify" style="background-color:#8b5cf6; margin: 20px auto; display:block;">
+    🔄 Mettre à jour les données audio (Bêta)
+</button>
+<p id="sync-status" style="text-align:center; color:#888;"></p>
+
 
     <script>
     // --- 1. CONFIGURATION ---
@@ -972,9 +979,72 @@
             `;
         });
     }
+
+        async function syncAudioFeatures() {
+    const statusEl = document.getElementById('sync-status');
+    if (!currentToken) return alert("Connecte-toi d'abord !");
+
+    statusEl.innerText = "⏳ Recherche des titres incomplets dans la BDD...";
+
+    // 1. On cherche les morceaux qui n'ont pas encore de 'valence' (donc pas analysés)
+    // On le fait par petits paquets pour ne pas faire exploser le navigateur
+    const { data: tracksToUpdate, error } = await sb
+        .from('tracks')
+        .select('spotify_id')
+        .is('valence', null) // Seuls ceux qui sont vides
+        .limit(50); // On en fait 50 à la fois pour tester
+
+    if (error) {
+        console.error(error);
+        return statusEl.innerText = "Erreur lors de la récupération BDD.";
+    }
+
+    if (!tracksToUpdate || tracksToUpdate.length === 0) {
+        return statusEl.innerText = "✅ Tout est déjà à jour ! (Ou aucun titre trouvé)";
+    }
+
+    statusEl.innerText = `🔍 ${tracksToUpdate.length} titres trouvés. Interrogation de Spotify...`;
+
+    // 2. On demande les infos à Spotify (Audio Features API)
+    const ids = tracksToUpdate.map(t => t.spotify_id).join(',');
+    const res = await fetch(`https://api.spotify.com/v1/audio-features?ids=${ids}`, {
+        headers: { Authorization: `Bearer ${currentToken}` }
+    });
+    const spotifyData = await res.json();
+
+    if (!spotifyData.audio_features) return statusEl.innerText = "Erreur API Spotify.";
+
+    // 3. On met à jour Supabase un par un (ou en groupe si on veut optimiser)
+    let successCount = 0;
+    statusEl.innerText = "💾 Sauvegarde dans Supabase...";
+
+    for (const feat of spotifyData.audio_features) {
+        if (!feat) continue; // Parfois Spotify n'a pas l'info
+        
+        const { error: updateErr } = await sb
+            .from('tracks')
+            .update({
+                valence: feat.valence,
+                energy: feat.energy,
+                danceability: feat.danceability,
+                acousticness: feat.acousticness,
+                instrumentalness: feat.instrumentalness,
+                // On peut ajouter tempo ou loundness si tu as créé les colonnes
+            })
+            .eq('spotify_id', feat.id);
+
+        if (!updateErr) successCount++;
+    }
+
+    statusEl.innerHTML = `🎉 <strong>${successCount}</strong> titres mis à jour ! <br> Relance la page ou clique encore sur le bouton pour faire la suite.`;
+    
+    // Optionnel : Relancer automatiquement loadSupabaseStats(currentUserId) pour voir le changement direct
+}
+
     </script>
 </body>
 </html>
+
 
 
 
