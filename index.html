@@ -359,12 +359,53 @@
         createBtn('30', '30 Jours');
         createBtn('all', 'Tout');
 
+                // ... (le début de setupTopControls reste pareil)
+
         const dateInput = document.createElement('input');
-        dateInput.type = 'date'; dateInput.id = 'date-picker';
-        Object.assign(dateInput.style, { backgroundColor: '#181818', color: 'white', border: '1px solid #555', padding: '5px', borderRadius: '5px', cursor: 'pointer' });
-        dateInput.onchange = (e) => { if(e.target.value) { resetSpecificInputs(); currentPeriod = 'specific_date'; currentSpecificValue = e.target.value; dateInput.style.borderColor = 'var(--spotify-green)'; updateDashboard(); }};
+        dateInput.type = 'date'; 
+        dateInput.id = 'date-picker';
+        Object.assign(dateInput.style, { 
+            backgroundColor: '#181818', 
+            color: 'white', 
+            border: '1px solid #555', 
+            padding: '5px', 
+            borderRadius: '5px', 
+            cursor: 'pointer',
+            fontFamily: 'inherit' // Pour garder la police Spotify
+        });
+
+        // LA CORRECTION EST ICI :
+        dateInput.addEventListener('change', (e) => {
+            const val = e.target.value;
+            if (val) {
+                // 1. On désactive les autres boutons (7j, 30j...)
+                document.querySelectorAll('.controls button, #top-controls-bar button').forEach(b => b.classList.remove('active'));
+                
+                // 2. On définit le mode "Date Spécifique"
+                currentPeriod = 'specific_date';
+                currentSpecificValue = val;
+                
+                // 3. Feedback visuel
+                dateInput.style.borderColor = 'var(--spotify-green)';
+                
+                // 4. On reset le filtre "Jour de la semaine" du graphique pour éviter les conflits
+                currentDayFilter = null;
+                switchChartMode('daily'); 
+
+                // 5. On lance la mise à jour
+                updateDashboard();
+            } else {
+                // Si l'utilisateur efface la date, on revient à "7 jours" par défaut
+                dateInput.style.borderColor = '#555';
+                currentPeriod = '7';
+                updateDashboard();
+            }
+        });
 
         periodGroup.appendChild(dateInput);
+        
+        // ... (la suite reste pareille)
+
         topBar.appendChild(select);
         topBar.appendChild(periodGroup);
     }
@@ -686,4 +727,5 @@
     </script>
 </body>
 </html>
+
 
