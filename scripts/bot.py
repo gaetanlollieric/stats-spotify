@@ -120,6 +120,11 @@ def process_user(user):
         
         # Récupération des Audio Features depuis notre map
         af = audio_features_map.get(tid, {})
+
+        if af:
+            print(f"DEBUG: Audio features trouvés pour {track['name']} -> Valence: {af.get('valence')}")
+        else:
+            print(f"DEBUG: ⚠️ AUCUN Audio feature pour {track['name']}")
         
         # Info Titre (Avec les nouvelles colonnes)
         tracks_db_data.append({
