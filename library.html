@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Ma Bibliothèque - Spotify Stats</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root {
+            --spotify-green: #1DB954;
+            --bg-dark: #121212;
+            --card-bg: #181818;
+            --text-color: #FFFFFF;
+        }
+        body {
+            font-family: 'Circular', sans-serif; background-color: var(--bg-dark);
+            color: var(--text-color); margin: 0; padding: 20px;
+        }
+        .container { max-width: 1000px; margin: 0 auto; }
+        
+        /* En-tête sticky pour la recherche */
+        .header-controls {
+            position: sticky; top: 0; background-color: var(--bg-dark);
+            padding: 20px 0; z-index: 100; border-bottom: 1px solid #333;
+            margin-bottom: 20px;
+        }
+
+        .top-nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .back-btn { text-decoration: none; color: #b3b3b3; font-size: 0.9rem; }
+        .back-btn:hover { color: var(--spotify-green); }
+        h1 { margin: 0; color: var(--spotify-green); font-size: 1.5rem; }
+
+        /* Barre de recherche et Tris */
+        .search-bar {
+            width: 100%; padding: 12px 20px; border-radius: 30px; border: none;
+            background: #333; color: white; font-size: 1rem; outline: none;
+            margin-bottom: 15px;
+        }
+        .search-bar:focus { background: #444; box-shadow: 0 0 0 2px var(--spotify-green); }
+
+        .sort-buttons { display: flex; gap: 10px; }
+        .sort-btn {
+            background: transparent; border: 1px solid #555; color: white;
+            padding: 5px 15px; border-radius: 20px; cursor: pointer; font-size: 0.85rem;
+        }
+        .sort-btn.active { background: var(--spotify-green); border-color: var(--spotify-green); color: black; font-weight: bold; }
+
+        /* Grille des artistes */
+        .artist-list {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .artist-card {
+            background: var(--card-bg); padding: 15px; border-radius: 8px;
+            transition: transform 0.2s, background 0.2s; cursor: pointer;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .artist-card:hover { transform: translateY(-3px); background: #282828; }
+        
+        .artist-info { overflow: hidden; }
+        .artist-name { font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;}
+        .artist-count { font-size: 0.8rem; color: #b3b3b3; margin-top: 4px; }
+        
+        .rank-badge {
+            background: #333; color: var(--spotify-green); font-size: 0.8rem;
+            padding: 2px 6px; border-radius: 4px; font-weight: bold; min-width: 30px; text-align: center;
+        }
+
+        /* Chargement */
+        .loader { text-align: center; color: #888; margin-top: 50px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    
+    <!-- Contrôles (Recherche + Tri) -->
+    <div class="header-controls">
+        <div class="top-nav">
+            <a href="index.html" class="back-btn">← Retour au Dashboard</a>
+            <h1>Ma Bibliothèque</h1>
+            <div id="total-count" style="color:#888; font-size:0.9rem;">...</div>
+        </div>
+
+        <input type="text" id="searchInput" class="search-bar" placeholder="🔍 Rechercher un artiste...">
+        
+        <div class="sort-buttons">
+            <button class="sort-btn active" onclick="setSort('count')">🔥 Plus écoutés</button>
+            <button class="sort-btn" onclick="setSort('name')">🔤 Alphabétique</button>
+        </div>
+    </div>
+
+    <!-- Liste des résultats -->
+    <div id="loader" class="loader">Chargement de toute votre bibliothèque...</div>
+    <div id="artist-grid" class="artist-list"></div>
+
+</div>
+
+<script>
+    // --- CONFIG ---
+    const SUPABASE_URL = 'https://kvrwymmsgwstvyqmscuy.supabase.co'; 
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2cnd5bW1zZ3dzdHZ5cW1zY3V5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3NjAxODksImV4cCI6MjA3OTMzNjE4OX0.XNJOD5MzOaM8u_tRuvXZvx2Q_mHUTbk-mAbUFnoU3H4'; 
+    const { createClient } = supabase;
+    const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let allArtists = []; // Stockera { name: "Orelsan", count: 150 }
+    let currentSort = 'count';
+
+    async function fetchAllArtists() {
+        // On récupère l'historique (table légère) joint avec tracks -> artists
+        // Note: On prend une grosse limite pour être sûr de tout avoir
+        const { data, error } = await sb
+            .from('listening_history')
+            .select(`
+                tracks!inner (
+                    artists!inner ( name )
+                )
+            `)
+            .limit(50000); 
+
+        if (error) { 
+            document.getElementById('loader').innerText = "Erreur de chargement.";
+            console.error(error); 
+            return; 
+        }
+
+        // Aggrégation JS (Compter les doublons)
+        const counts = {};
+        data.forEach(row => {
+            const name = row.tracks?.artists?.name;
+            if (name) {
+                counts[name] = (counts[name] || 0) + 1;
+            }
+        });
+
+        // Transformation en tableau
+        allArtists = Object.entries(counts).map(([name, count]) => ({ name, count }));
+
+        // Stats globales
+        document.getElementById('total-count').innerText = `${allArtists.length} Artistes`;
+        document.getElementById('loader').style.display = 'none';
+
+        // Premier rendu
+        renderArtists();
+    }
+
+    function renderArtists() {
+        const container = document.getElementById('artist-grid');
+        const searchVal = document.getElementById('searchInput').value.toLowerCase();
+        
+        container.innerHTML = '';
+
+        // 1. Filtrer
+        let filtered = allArtists.filter(a => a.name.toLowerCase().includes(searchVal));
+
+        // 2. Trier
+        if (currentSort === 'count') {
+            filtered.sort((a, b) => b.count - a.count);
+        } else {
+            filtered.sort((a, b) => a.name.localeCompare(b.name));
+        }
+
+        // 3. Afficher
+        if (filtered.length === 0) {
+            container.innerHTML = '<p style="grid-column:1/-1; text-align:center; color:#666;">Aucun artiste trouvé.</p>';
+            return;
+        }
+
+        // On utilise un DocumentFragment pour la performance
+        const fragment = document.createDocumentFragment();
+
+        filtered.forEach((a, index) => {
+            const card = document.createElement('div');
+            card.className = 'artist-card';
+            // Lien vers la page détail (artist.html) créée précédemment
+            card.onclick = () => window.location.href = `artist.html?name=${encodeURIComponent(a.name)}`;
+
+            // Badge de rang seulement si tri par écoutes
+            const rankDisplay = currentSort === 'count' ? `<div class="rank-badge">#${index + 1}</div>` : '';
+
+            card.innerHTML = `
+                <div class="artist-info">
+                    <span class="artist-name">${a.name}</span>
+                    <span class="artist-count">${a.count} écoutes</span>
+                </div>
+                ${rankDisplay}
+            `;
+            fragment.appendChild(card);
+        });
+
+        container.appendChild(fragment);
+    }
+
+    // Gestionnaire de tri
+    window.setSort = (mode) => {
+        currentSort = mode;
+        document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+        event.target.classList.add('active');
+        renderArtists();
+    };
+
+    // Gestionnaire de recherche (Input en temps réel)
+    document.getElementById('searchInput').addEventListener('input', renderArtists);
+
+    // Lancer le chargement
+    fetchAllArtists();
+</script>
+
+</body>
+</html>
