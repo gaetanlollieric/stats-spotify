@@ -288,6 +288,9 @@
             const profile = await resProfile.json();
             
             currentUserId = profile.id;
+
+            localStorage.setItem('my_spotify_id', currentUserId);
+            
             displayedUserId = profile.id;
             document.getElementById('user-display-name').innerText = profile.display_name;
 
@@ -856,6 +859,7 @@
     </script>
 </body>
 </html>
+
 
 
 
