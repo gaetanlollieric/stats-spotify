@@ -107,8 +107,16 @@
     let currentSort = 'count';
 
     async function fetchAllArtists() {
-        // On récupère l'historique (table légère) joint avec tracks -> artists
-        // Note: On prend une grosse limite pour être sûr de tout avoir
+        // 1. Récupérer l'ID de l'utilisateur connecté
+        const myId = localStorage.getItem('my_spotify_id');
+    
+        if (!myId) {
+            alert("Erreur : ID utilisateur manquant. Veuillez repasser par l'accueil.");
+            window.location.href = 'index.html';
+            return;
+        }
+    
+        // 2. Requête Supabase AVEC le filtre .eq('user_id', myId)
         const { data, error } = await sb
             .from('listening_history')
             .select(`
@@ -116,33 +124,28 @@
                     artists!inner ( name )
                 )
             `)
+            .eq('user_id', myId) // <--- C'EST ICI QUE LA MAGIE OPÈRE
             .limit(50000); 
-
+    
         if (error) { 
             document.getElementById('loader').innerText = "Erreur de chargement.";
             console.error(error); 
             return; 
         }
-
-        // Aggrégation JS (Compter les doublons)
+    
+        // ... (Le reste de la fonction reste identique : aggrégation, tri, affichage)
+        // Copiez-collez la suite de votre fonction existante ici
         const counts = {};
         data.forEach(row => {
             const name = row.tracks?.artists?.name;
-            if (name) {
-                counts[name] = (counts[name] || 0) + 1;
-            }
+            if (name) counts[name] = (counts[name] || 0) + 1;
         });
-
-        // Transformation en tableau
         allArtists = Object.entries(counts).map(([name, count]) => ({ name, count }));
-
-        // Stats globales
         document.getElementById('total-count').innerText = `${allArtists.length} Artistes`;
         document.getElementById('loader').style.display = 'none';
-
-        // Premier rendu
         renderArtists();
     }
+
 
     function renderArtists() {
         const container = document.getElementById('artist-grid');
