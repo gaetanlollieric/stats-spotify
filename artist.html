@@ -143,7 +143,7 @@
             // Logique d'affichage : Graphique seulement si >= 3 titres
             const showChart = sortedTracks.length >= 3;
             const chartHTML = showChart 
-                ? `<div class="chart-container">anvas id="${canvasId}"></canvas></div>` 
+                ? `<div class="chart-container"><canvas id="${canvasId}"></canvas></div>` 
                 : `<p style="text-align:center; color:#666; margin: 20px 0;">Single / EP (Pas assez de données pour un radar)</p>`;
 
             // Génération de la liste des titres (Top 5 seulement pour ne pas surcharger, ou tout si petit)
