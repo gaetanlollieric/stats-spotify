@@ -78,15 +78,21 @@
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2cnd5bW1zZ3dzdHZ5cW1zY3V5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3NjAxODksImV4cCI6MjA3OTMzNjE4OX0.XNJOD5MzOaM8u_tRuvXZvx2Q_mHUTbk-mAbUFnoU3H4'; 
     const { createClient } = supabase;
     const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
-
+    
     async function loadArtistData() {
         const params = new URLSearchParams(window.location.search);
         const artistName = params.get('name'); 
-
-        if (!artistName) { document.getElementById('artist-name').innerText = "Artiste introuvable"; return; }
+        
+        // 1. Récupérer l'ID
+        const myId = localStorage.getItem('my_spotify_id');
+    
+        if (!artistName || !myId) { 
+            document.getElementById('artist-name').innerText = "Données manquantes"; 
+            return; 
+        }
         document.getElementById('artist-name').innerText = artistName;
-
-        // 1. Récupérer les données avec l'album_name
+    
+        // 2. Requête Supabase AVEC le filtre .eq('user_id', myId)
         const { data, error } = await sb
             .from('listening_history')
             .select(`
@@ -97,6 +103,7 @@
                 )
             `)
             .eq('tracks.artists.name', artistName)
+            .eq('user_id', myId) // <--- AJOUT DU FILTRE UTILISATEUR
             .limit(10000); 
 
         if (error) { console.error(error); return; }
