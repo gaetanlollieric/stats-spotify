@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Détail Artiste - Spotify Stats</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root {
+            --spotify-green: #1DB954;
+            --bg-dark: #121212;
+            --card-bg: #181818;
+            --text-color: #FFFFFF;
+        }
+        body {
+            font-family: 'Circular', sans-serif; background-color: var(--bg-dark);
+            color: var(--text-color); margin: 0; padding: 20px;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .back-btn {
+            display: inline-block; text-decoration: none; color: #b3b3b3; 
+            margin-bottom: 20px; font-size: 0.9rem;
+        }
+        .back-btn:hover { color: var(--spotify-green); }
+        
+        h1 { color: var(--spotify-green); text-align: center; margin-bottom: 5px; }
+        .subtitle { text-align: center; color: #888; margin-bottom: 40px; }
+
+        /* GRILLE DES ALBUMS */
+        .albums-grid {
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); 
+            gap: 20px;
+        }
+
+        .album-card {
+            background: var(--card-bg); padding: 20px; border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3); display: flex; flex-direction: column;
+        }
+
+        .album-header {
+            border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 15px;
+            display: flex; justify-content: space-between; align-items: baseline;
+        }
+        .album-title { font-size: 1.1rem; font-weight: bold; color: white; }
+        .album-total { font-size: 0.8rem; color: var(--spotify-green); }
+
+        /* Canvas Container */
+        .chart-container {
+            position: relative; height: 300px; width: 100%; margin-bottom: 20px;
+        }
+
+        /* Table minimaliste pour l'album */
+        .mini-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .mini-table td { padding: 5px 0; border-bottom: 1px solid #2a2a2a; color: #ccc; }
+        .mini-table tr:last-child td { border-bottom: none; }
+        .score-bar { height: 4px; background: #333; border-radius: 2px; width: 50px; display: inline-block; vertical-align: middle; margin-left: 10px; }
+        .score-fill { height: 100%; background: var(--spotify-green); border-radius: 2px; }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <a href="index.html" class="back-btn">← Retour au Dashboard</a>
+
+    <h1 id="artist-name">Chargement...</h1>
+    <p class="subtitle" id="artist-stats">Analyse par Album</p>
+
+    <div id="albums-container" class="albums-grid">
+        <!-- Les cartes albums seront injectées ici par JS -->
+    </div>
+</div>
+
+<script>
+    // --- CONFIG ---
+    const SUPABASE_URL = 'https://kvrwymmsgwstvyqmscuy.supabase.co'; 
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2cnd5bW1zZ3dzdHZ5cW1zY3V5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3NjAxODksImV4cCI6MjA3OTMzNjE4OX0.XNJOD5MzOaM8u_tRuvXZvx2Q_mHUTbk-mAbUFnoU3H4'; 
+    const { createClient } = supabase;
+    const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    async function loadArtistData() {
+        const params = new URLSearchParams(window.location.search);
+        const artistName = params.get('name'); 
+
+        if (!artistName) { document.getElementById('artist-name').innerText = "Artiste introuvable"; return; }
+        document.getElementById('artist-name').innerText = artistName;
+
+        // 1. Récupérer les données avec l'album_name
+        const { data, error } = await sb
+            .from('listening_history')
+            .select(`
+                tracks!inner (
+                    name,
+                    album_name,
+                    artists!inner ( name )
+                )
+            `)
+            .eq('tracks.artists.name', artistName)
+            .limit(10000); 
+
+        if (error) { console.error(error); return; }
+
+        // 2. Grouper par Album puis par Titre
+        const albums = {};
+        let totalPlaysGlobal = 0;
+
+        data.forEach(row => {
+            const albumName = row.tracks.album_name || "Album Inconnu";
+            const trackName = row.tracks.name;
+
+            if (!albums[albumName]) {
+                albums[albumName] = { total: 0, tracks: {} };
+            }
+
+            albums[albumName].tracks[trackName] = (albums[albumName].tracks[trackName] || 0) + 1;
+            albums[albumName].total++;
+            totalPlaysGlobal++;
+        });
+
+        document.getElementById('artist-stats').innerText = `${Object.keys(albums).length} albums • ${totalPlaysGlobal} écoutes totales`;
+
+        // 3. Trier les albums (les plus écoutés en premier)
+        const sortedAlbums = Object.entries(albums)
+            .sort(([,a], [,b]) => b.total - a.total);
+
+        // 4. Générer le HTML pour chaque album
+        const container = document.getElementById('albums-container');
+        container.innerHTML = '';
+
+        sortedAlbums.forEach(([albumName, data], index) => {
+            // Préparer les données des titres pour cet album
+            const sortedTracks = Object.entries(data.tracks)
+                .sort(([,a], [,b]) => b - a); // Tri des titres par écoutes
+
+            // ID unique pour le canvas
+            const canvasId = `chart-album-${index}`;
+
+            // Création de la carte HTML
+            const card = document.createElement('div');
+            card.className = 'album-card';
+            
+            // Logique d'affichage : Graphique seulement si >= 3 titres
+            const showChart = sortedTracks.length >= 3;
+            const chartHTML = showChart 
+                ? `<div class="chart-container">anvas id="${canvasId}"></canvas></div>` 
+                : `<p style="text-align:center; color:#666; margin: 20px 0;">Single / EP (Pas assez de données pour un radar)</p>`;
+
+            // Génération de la liste des titres (Top 5 seulement pour ne pas surcharger, ou tout si petit)
+            let listHTML = '<table class="mini-table"><tbody>';
+            sortedTracks.forEach(([tName, tCount]) => {
+                // Calcul pourcentage pour la petite barre à côté
+                const maxInAlbum = sortedTracks[0][1];
+                const pct = (tCount / maxInAlbum) * 100;
+                
+                listHTML += `
+                    <tr>
+                        <td>${tName}</td>
+                        <td style="text-align:right; white-space:nowrap;">
+                            ${tCount} 
+                            <div class="score-bar"><div class="score-fill" style="width:${pct}%"></div></div>
+                        </td>
+                    </tr>`;
+            });
+            listHTML += '</tbody></table>';
+
+            card.innerHTML = `
+                <div class="album-header">
+                    <span class="album-title">${albumName}</span>
+                    <span class="album-total">${data.total} écoutes</span>
+                </div>
+                ${chartHTML}
+                ${listHTML}
+            `;
+
+            container.appendChild(card);
+
+            // 5. Initialiser le graphique si nécessaire
+            if (showChart) {
+                renderAlbumChart(canvasId, sortedTracks);
+            }
+        });
+    }
+
+    function renderAlbumChart(canvasId, tracksData) {
+        const ctx = document.getElementById(canvasId).getContext('2d');
+        const labels = tracksData.map(t => t[0]); // Noms des titres
+        const data = tracksData.map(t => t[1]);   // Noms des écoutes
+
+        // Astuce : Si les titres sont trop longs, le radar devient moche.
+        // On coupe les titres longs à 15 caractères pour le graphique seulement
+        const shortLabels = labels.map(l => l.length > 20 ? l.substring(0, 17) + '...' : l);
+
+        new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: shortLabels,
+                datasets: [{
+                    label: 'Écoutes',
+                    data: data,
+                    fill: true,
+                    backgroundColor: 'rgba(59, 130, 246, 0.2)', // Bleu pour changer un peu (ou gardez vert)
+                    borderColor: '#3b82f6',
+                    pointBackgroundColor: '#fff',
+                    pointBorderColor: '#3b82f6',
+                    pointHoverBackgroundColor: '#fff',
+                    pointHoverBorderColor: '#3b82f6'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    r: {
+                        angleLines: { color: '#333' },
+                        grid: { color: '#333' },
+                        pointLabels: {
+                            color: '#b3b3b3',
+                            font: { size: 10 } // Police plus petite pour les albums
+                        },
+                        ticks: { display: false, backdropColor: 'transparent' }
+                    }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+
+    loadArtistData();
+</script>
+
+</body>
+</html>
