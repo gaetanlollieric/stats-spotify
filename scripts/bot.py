@@ -106,7 +106,7 @@ def process_user(user):
             "artist_id": track["artists"][0]["id"], 
             "album_name": track["album"]["name"],
             "duration_ms": track["duration_ms"],
-            "popularity": track.get("popularity", 0) # On garde ça car c'est dispo et cool
+            "popularity": track.get("popularity", 0)
         })
         
         history_db_data.append({
@@ -128,15 +128,21 @@ def process_user(user):
 
     if history_db_data:
         try:
+            # On utilise ignore_duplicates=True pour ne pas planter sur les doublons
+            # Supabase retourne les lignes insérées
             response = supabase.table("listening_history").upsert(
                 history_db_data, 
                 on_conflict="played_at, user_id", 
                 ignore_duplicates=True
             ).execute()
             
+            # On compte combien de lignes ont vraiment été ajoutées
             nb_reels_ajouts = len(response.data)
+            
             if nb_reels_ajouts > 0:
                 print(f"✅ {nb_reels_ajouts} nouveaux titres sauvegardés.")
+                
+                # --- STOCKAGE DES STATS ---
                 stats_discord["total_tracks"] += nb_reels_ajouts
                 stats_discord["users_processed"].append({
                     "name": user["display_name"],
@@ -144,6 +150,7 @@ def process_user(user):
                 })
             else:
                 print("💤 Rien de nouveau.")
+                
         except Exception as e:
             print(f"⚠️ Erreur insert History: {e}")
 
@@ -151,7 +158,7 @@ def process_user(user):
 
 # --- MAIN ---
 def main():
-    print("🚀 Démarrage du script (Version Clean)...")
+    print("🚀 Démarrage du script...")
     try:
         all_users = supabase.table("users").select("*").execute()
     except Exception as e:
@@ -164,10 +171,24 @@ def main():
             except Exception as e: print(f"❌ Crash user {user.get('display_name')}: {e}")
             time.sleep(1)
 
+        # --- ENVOI DISCORD MODIFIÉ ---
         if DISCORD_WEBHOOK and stats_discord["total_tracks"] > 0:
-            msg = f"🎵 **Sync OK** (+{stats_discord['total_tracks']} titres)"
-            try: requests.post(DISCORD_WEBHOOK, json={"content": msg})
-            except: pass
+            
+            # Création du message détaillé
+            msg = "🎵 **Mise à jour Spotify Stats**\n"
+            
+            # Boucle sur chaque utilisateur qui a eu des ajouts
+            for u in stats_discord["users_processed"]:
+                msg += f"👤 **{u['name']}** : +{u['count']} titres\n"
+            
+            # Total global à la fin
+            msg += f"\n📈 **Total Ajouté** : {stats_discord['total_tracks']} titres."
+
+            try: 
+                requests.post(DISCORD_WEBHOOK, json={"content": msg})
+                print("✅ Notification Discord envoyée.")
+            except Exception as e: 
+                print(f"❌ Erreur Discord: {e}")
     else:
         print("⚠️ Aucun utilisateur.")
 
