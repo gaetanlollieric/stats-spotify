@@ -175,7 +175,7 @@ def main():
         if DISCORD_WEBHOOK and stats_discord["total_tracks"] > 0:
             
             # Création du message détaillé
-            msg = "🎵 **Mise à jour Spotify Stats**\n"
+            msg = "🎵 **Mise à jour Spotify Stats** 🎵\n"
             
             # Boucle sur chaque utilisateur qui a eu des ajouts
             for u in stats_discord["users_processed"]:
