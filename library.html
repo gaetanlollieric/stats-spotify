@@ -1,257 +1,191 @@
 <!DOCTYPE html>
 <html lang="fr">
+
 <head>
     <meta charset="UTF-8">
     <title>Ma Bibliothèque - Spotify Stats</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
-    --primary: #1ED760; /* Un vert un peu plus "pop" et moderne */
-    --primary-dark: #169c46;
-    --bg-main: #0b0b0b; /* Noir très profond mais pas pur */
-    --bg-card: #121212;
-    --bg-elevated: #181818;
-    --border-subtle: rgba(255, 255, 255, 0.08);
-    --text-main: #FFFFFF;
-    --text-secondary: #A7A7A7;
-    
-    --radius-lg: 16px;
-    --radius-md: 12px;
-    --radius-full: 999px;
-    
-    --shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.2);
-    --font-stack: 'Circular', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-}
+            --spotify-green: #1DB954;
+            --bg-dark: #121212;
+            --card-bg: #181818;
+            --text-color: #FFFFFF;
+        }
 
-body {
-    background-color: var(--bg-main);
-    color: var(--text-main);
-    font-family: var(--font-stack);
-    margin: 0;
-    padding: 30px;
-    line-height: 1.6;
-    -webkit-font-smoothing: antialiased;
-}
+        body {
+            font-family: 'Circular', sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+        }
 
-h1, h2, h3 {
-    color: var(--text-main);
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    margin-top: 0;
-}
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
 
-h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
-h2 { font-size: 1.5rem; margin-bottom: 1.5rem; margin-top: 3rem; }
-a { text-decoration: none; transition: color 0.2s; }
+        /* En-tête sticky pour la recherche */
+        .header-controls {
+            position: sticky;
+            top: 0;
+            background-color: var(--bg-dark);
+            padding: 20px 0;
+            z-index: 100;
+            border-bottom: 1px solid #333;
+            margin-bottom: 20px;
+        }
 
-/* --- CONTENEURS --- */
-.container {
-    max-width: 1100px;
-    margin: 0 auto;
-    padding-bottom: 50px;
-}
+        .top-nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
 
-/* --- CARTES GÉNÉRIQUES --- */
-.card, .artist-card, .album-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg);
-    padding: 24px;
-    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-}
+        .back-btn {
+            text-decoration: none;
+            color: #b3b3b3;
+            font-size: 0.9rem;
+        }
 
-.card:hover, .artist-card:hover, .album-card:hover {
-    transform: translateY(-4px);
-    border-color: rgba(255,255,255,0.15);
-    box-shadow: var(--shadow-soft);
-    background: var(--bg-elevated);
-}
+        .back-btn:hover {
+            color: var(--spotify-green);
+        }
 
-/* Suppression des bordures colorées "grossières" au profit d'un accent subtil si nécessaire */
-.card.green, .card.purple { border-top: none; position: relative; overflow: hidden; }
-.card.green::before { content:''; position: absolute; top:0; left:0; width: 100%; height: 4px; background: var(--primary); }
-.card.purple::before { content:''; position: absolute; top:0; left:0; width: 100%; height: 4px; background: #8b5cf6; }
+        h1 {
+            margin: 0;
+            color: var(--spotify-green);
+            font-size: 1.5rem;
+        }
 
-/* --- STATS GRID (Dashboard) --- */
-.stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 20px;
-    margin-bottom: 40px;
-}
+        /* Barre de recherche et Tris */
+        .search-bar {
+            width: 100%;
+            padding: 12px 20px;
+            border-radius: 30px;
+            border: none;
+            background: #333;
+            color: white;
+            font-size: 1rem;
+            outline: none;
+            margin-bottom: 15px;
+        }
 
-.stat-label { color: var(--text-secondary); font-size: 0.85rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
-.big-stat { font-size: 3rem; font-weight: 800; color: var(--text-main); margin: 5px 0 0 0; letter-spacing: -0.03em; }
+        .search-bar:focus {
+            background: #444;
+            box-shadow: 0 0 0 2px var(--spotify-green);
+        }
 
-/* --- NAVIGATION & HEADER (Library) --- */
-.header-controls {
-    position: sticky;
-    top: 0;
-    background: rgba(11, 11, 11, 0.85); /* Fond semi-transparent */
-    backdrop-filter: blur(12px); /* Effet verre */
-    padding: 20px 0;
-    z-index: 100;
-    border-bottom: 1px solid var(--border-subtle);
-    margin: -30px -30px 30px -30px; /* Pour toucher les bords */
-    padding-left: 30px; padding-right: 30px; /* Compensation */
-}
+        .sort-buttons {
+            display: flex;
+            gap: 10px;
+        }
 
-.top-nav { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 20px; }
-.back-btn { color: var(--text-secondary); font-weight: 600; font-size: 0.9rem; }
-.back-btn:hover { color: var(--primary); }
+        .sort-btn {
+            background: transparent;
+            border: 1px solid #555;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
 
-/* --- RECHERCHE --- */
-.search-bar {
-    width: 100%;
-    max-width: 100%;
-    padding: 14px 24px;
-    border-radius: var(--radius-full);
-    border: 1px solid var(--border-subtle);
-    background: var(--bg-elevated);
-    color: white;
-    font-size: 1rem;
-    outline: none;
-    transition: all 0.2s;
-    box-sizing: border-box;
-}
-.search-bar:focus {
-    border-color: var(--primary);
-    background: #202020;
-    box-shadow: 0 0 0 4px rgba(30, 215, 96, 0.1);
-}
+        .sort-btn.active {
+            background: var(--spotify-green);
+            border-color: var(--spotify-green);
+            color: black;
+            font-weight: bold;
+        }
 
-/* --- BOUTONS --- */
-button, .filter-btn, .sort-btn {
-    font-family: inherit;
-    border: none;
-    background: var(--bg-elevated);
-    color: var(--text-main);
-    padding: 8px 20px;
-    border-radius: var(--radius-full);
-    font-size: 0.85rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-    border: 1px solid transparent;
-}
+        /* Grille des artistes */
+        .artist-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+        }
 
-button:hover, .filter-btn:hover, .sort-btn:hover {
-    background: #2a2a2a;
-    transform: scale(1.02);
-}
+        .artist-card {
+            background: var(--card-bg);
+            padding: 15px;
+            border-radius: 8px;
+            transition: transform 0.2s, background 0.2s;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
 
-.filter-btn.active, .sort-btn.active {
-    background: var(--primary);
-    color: black;
-    border-color: var(--primary);
-}
+        .artist-card:hover {
+            transform: translateY(-3px);
+            background: #282828;
+        }
 
-/* Bouton Spotify Login */
-.btn-spotify {
-    background: var(--primary);
-    color: black;
-    padding: 16px 48px;
-    font-size: 1.1rem;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
-}
-.btn-spotify:hover {
-    background: var(--primary-dark);
-    color: white;
-    transform: scale(1.05);
-}
+        .artist-info {
+            overflow: hidden;
+        }
 
-/* --- TABLEAUX & LISTES --- */
-.track-table, .mini-table { width: 100%; border-collapse: separate; border-spacing: 0 4px; margin-top: 10px; }
-.track-table th { 
-    text-align: left; 
-    color: var(--text-secondary); 
-    font-size: 0.75rem; 
-    text-transform: uppercase; 
-    letter-spacing: 0.1em;
-    padding: 0 16px 10px 16px;
-    border-bottom: 1px solid var(--border-subtle);
-}
-.track-table td { 
-    padding: 12px 16px; 
-    background: rgba(255,255,255,0.02); 
-    transition: background 0.2s;
-}
-.track-table tr:first-child td:first-child { border-top-left-radius: 8px; border-bottom-left-radius: 8px; }
-.track-table tr:first-child td:last-child { border-top-right-radius: 8px; border-bottom-right-radius: 8px; }
-.track-table tr:hover td { background: rgba(255,255,255,0.06); }
+        .artist-name {
+            font-weight: bold;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: block;
+        }
 
-ol { padding-left: 20px; color: var(--text-secondary); }
-li { margin-bottom: 10px; padding-left: 10px; }
-li::marker { color: var(--primary); font-weight: bold; }
+        .artist-count {
+            font-size: 0.8rem;
+            color: #b3b3b3;
+            margin-top: 4px;
+        }
 
-/* --- GRID ARTISTES (Library) --- */
-.artist-list {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 20px;
-}
-.artist-card {
-    display: flex; flex-direction: column; align-items: flex-start;
-    padding: 20px; gap: 10px;
-}
-.artist-name { font-size: 1rem; font-weight: 700; color: white; width: 100%; }
-.artist-count { font-size: 0.85rem; color: var(--text-secondary); }
-.rank-badge {
-    align-self: flex-start;
-    background: rgba(30, 215, 96, 0.1);
-    color: var(--primary);
-    padding: 4px 8px;
-    border-radius: 6px;
-    font-size: 0.75rem;
-    font-weight: 800;
-}
+        .rank-badge {
+            background: #333;
+            color: var(--spotify-green);
+            font-size: 0.8rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: bold;
+            min-width: 30px;
+            text-align: center;
+        }
 
-/* --- ALBUMS (Detail) --- */
-.albums-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 24px; }
-.album-header { border-bottom: 1px solid var(--border-subtle); padding-bottom: 15px; margin-bottom: 20px; }
-.score-bar { background: #333; border-radius: 2px; height: 4px; overflow: hidden; }
-.score-fill { background: var(--primary); height: 100%; border-radius: 2px; }
-
-/* --- HEATMAP --- */
-.heatmap-container { padding: 20px 0; }
-.heatmap-cell { border-radius: 3px; }
-.level-0 { background-color: #161616; }
-.level-1 { background-color: #0e4429; }
-.level-2 { background-color: #006d32; }
-.level-3 { background-color: #26a641; }
-.level-4 { background-color: #39d353; }
-
-/* --- UTILS --- */
-.hidden { display: none !important; }
-.loader { color: var(--text-secondary); font-size: 0.9rem; text-align: center; margin-top: 40px; }
-
+        /* Chargement */
+        .loader {
+            text-align: center;
+            color: #888;
+            margin-top: 50px;
+        }
     </style>
 </head>
+
 <body>
 
-<div class="container">
-    
-    <!-- Contrôles (Recherche + Tri) -->
-    <div class="header-controls">
-        <div class="top-nav">
-            <a href="index.html" class="back-btn">← Retour au Dashboard</a>
-            <h1>Ma Bibliothèque</h1>
-            <div id="total-count" style="color:#888; font-size:0.9rem;">...</div>
+    <div class="container">
+
+        <!-- Contrôles (Recherche + Tri) -->
+        <div class="header-controls">
+            <div class="top-nav">
+                <a href="index.html" class="back-btn">← Retour au Dashboard</a>
+                <h1>Ma Bibliothèque</h1>
+                <div id="total-count" style="color:#888; font-size:0.9rem;">...</div>
+            </div>
+
+            <input type="text" id="searchInput" class="search-bar" placeholder="🔍 Rechercher un artiste...">
+
+            <div class="sort-buttons">
+                <button class="sort-btn active" onclick="setSort('count')">🔥 Plus écoutés</button>
+                <button class="sort-btn" onclick="setSort('name')">🔤 Alphabétique</button>
+            </div>
         </div>
 
-        <input type="text" id="searchInput" class="search-bar" placeholder="🔍 Rechercher un artiste...">
-        
-        <div class="sort-buttons">
-            <button class="sort-btn active" onclick="setSort('count')">🔥 Plus écoutés</button>
-            <button class="sort-btn" onclick="setSort('name')">🔤 Alphabétique</button>
-        </div>
+        <!-- Liste des résultats -->
+        <div id="loader" class="loader">Chargement de toute votre bibliothèque...</div>
+        <div id="artist-grid" class="artist-list"></div>
+
     </div>
-
-    <!-- Liste des résultats -->
-    <div id="loader" class="loader">Chargement de toute votre bibliothèque...</div>
-    <div id="artist-grid" class="artist-list"></div>
-
-</div>
 
 <script>
     // --- CONFIG ---
