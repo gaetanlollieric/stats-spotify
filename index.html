@@ -445,6 +445,11 @@
             document.getElementById('dashboard').classList.remove('hidden');
             
             currentToken = response.access_token;
+            // Après avoir récupéré 'response.access_token' et 'profile'
+            localStorage.setItem('spotify_token', response.access_token);
+            localStorage.setItem('spotify_token_time', Date.now().toString());
+            localStorage.setItem('my_spotify_id', profile.id);
+
             const resProfile = await fetch("https://api.spotify.com/v1/me", { headers: { Authorization: `Bearer ${currentToken}` } });
             const profile = await resProfile.json();
             
@@ -1020,6 +1025,7 @@
     </script>
 </body>
 </html>
+
 
 
 
