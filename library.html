@@ -147,7 +147,7 @@
         // On récupère juste les noms (on a retiré image_url pour éviter le crash)
         const { data, error } = await sb
             .from('listening_history')
-            .select('tracks!inner(artists!inner(name))')
+            .select('tracks!inner(artists!inner(name, spotify_id)))')
             .eq('user_id', myId)
             .limit(50000); 
     
@@ -162,10 +162,18 @@
         data.forEach(row => {
             const a = row.tracks?.artists;
             if (!a) return;
-            if (!artistsMap[a.name]) {
-                artistsMap[a.name] = { name: a.name, count: 0, image: null };
+            const key = a.spotify_id || a.name;  // clé unique
+            
+            if (!artistsMap[key]) {
+                artistsMap[key] = { 
+                    name: a.name, 
+                    id: a.spotify_id || null,
+                    count: 0, 
+                    image: null 
+                };
             }
-            artistsMap[a.name].count++;
+            artistsMap[key].count++;
+
         });
 
         allArtists = Object.values(artistsMap);
@@ -255,50 +263,49 @@
     
         for (let artist of missingImages) {
             try {
-                const res = await fetch(
-                    `https://api.spotify.com/v1/search?q=${encodeURIComponent(artist.name)}&type=artist&limit=5`,
-                    { headers: { Authorization: `Bearer ${spotifyToken}` } }
-                );
-                
-                if (!res.ok) {
-                    console.warn("Erreur Spotify search pour", artist.name, res.status);
-                    continue;
-                }
+                let spotArt = null;
     
-                const json = await res.json();
-                const itemsRes = json.artists?.items || [];
-                if (!itemsRes.length) continue;
+                if (artist.id) {
+                    // 1) Cas idéal : on a l’ID Spotify exact
+                    const res = await fetch(`https://api.spotify.com/v1/artists/${artist.id}`, {
+                        headers: { Authorization: `Bearer ${spotifyToken}` }
+                    });
+                    if (!res.ok) continue;
+                    spotArt = await res.json();
+                } else {
+                    // 2) Fallback : recherche par nom (rare)
+                    const res = await fetch(
+                        `https://api.spotify.com/v1/search?q=${encodeURIComponent(artist.name)}&type=artist&limit=5`,
+                        { headers: { Authorization: `Bearer ${spotifyToken}` } }
+                    );
+                    if (!res.ok) continue;
+                    const json = await res.json();
+                    const itemsRes = json.artists?.items || [];
+                    if (!itemsRes.length) continue;
     
-                // Choix du meilleur candidat par nom (comme sur la page artiste)
-                const normalizedTarget = artist.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, '');
-                
-                let best = itemsRes[0];
-                for (const cand of itemsRes) {
-                    const normalizedName = cand.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, '');
-                    if (normalizedName === normalizedTarget) {
-                        best = cand;
-                        break;
+                    const normalizedTarget = artist.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, '');
+                    let best = itemsRes[0];
+                    for (const cand of itemsRes) {
+                        const normalizedName = cand.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, '');
+                        if (normalizedName === normalizedTarget) { best = cand; break; }
                     }
+                    spotArt = best;
                 }
     
-                const spotArt = best;
-                if (spotArt.images?.length > 0) {
+                if (spotArt && spotArt.images?.length > 0) {
                     const bestImg = spotArt.images.length > 1 ? spotArt.images[1].url : spotArt.images[0].url;
                     artist.image = bestImg;
-    
                     const safeName = CSS.escape(artist.name);
                     const imgEl = document.querySelector(`img[data-name="${safeName}"]`);
-                    if (imgEl) {
-                        imgEl.src = bestImg;
-                    }
+                    if (imgEl) imgEl.src = bestImg;
                 }
-    
             } catch (e) {
                 console.error("Erreur img", artist.name, e);
             }
             await new Promise(r => setTimeout(r, 120));
         }
     }
+
 
 
 
