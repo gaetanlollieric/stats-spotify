@@ -234,7 +234,7 @@
     <!-- LOGIN -->
     <div id="login-section">
         <h1>Spotify Stats & History</h1>
-        <p>Connectez-vous pour voir vos tops et l'analyse complÃ¨te.</p>
+        <p>Connectez-vous pour voir vos tops et l'analyse de vos écoutes.</p>
         <button id="login-btn" class="btn-spotify">Se connecter</button>
     </div>
 
@@ -247,7 +247,7 @@
         <!-- 3 Stats Cards -->
         <div class="stats-grid">
             <div class="card green">
-                <div class="stat-label">Ã‰coutes Totales</div>
+                <div class="stat-label">Écoutes Totales</div>
                 <div class="big-stat" id="db-total-tracks">...</div>
             </div>
             <div class="card purple">
@@ -255,7 +255,7 @@
                 <div class="big-stat" id="db-unique-tracks">...</div>
             </div>
             <div class="card green">
-                <div class="stat-label">Temps d'Ã©coute</div>
+                <div class="stat-label">Temps d'écoute</div>
                 <div class="big-stat" id="db-total-time">...</div>
             </div>
         </div>
@@ -277,14 +277,14 @@
         </div>
 
         <!-- Classement BDD -->
-        <h2 id="top-tracks-title" style="margin-top:40px;">ðŸ† Top 10</h2>
+        <h2 id="top-tracks-title" style="margin-top:40px;">Top 10</h2>
         <div class="card">
             <table class="track-table">
                 <thead>
                     <tr>
                         <th>Titre</th>
                         <th>Artiste</th>
-                        <th>Ã‰coutes</th>
+                        <th>Écoutes</th>
                     </tr>
                 </thead>
                 <tbody id="db-top-tracks"></tbody>
@@ -292,7 +292,7 @@
         </div>
 
         <!-- SECTION TIME TRAVEL -->
-        <h2 style="margin-top:40px;">â³ Time Travel</h2>
+        <h2 style="margin-top:40px;">Time Travel</h2>
         <div class="card">
             <div class="controls" style="justify-content: center; margin-bottom: 20px;">
                 <button class="filter-btn" onclick="timeTravel('month')">Il y a 1 Mois</button>
@@ -306,8 +306,8 @@
 
         <!-- SECTION FIDÃ‰LITÃ‰ ARTISTE -->
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:40px;">
-            <h2>ðŸ’Ž FidÃ©litÃ© Artiste</h2>
-            <a href="library.html" class="filter-btn" style="text-decoration:none; font-size:0.9rem;">ðŸ“š Voir tous
+            <h2>Fidélité Artiste</h2>
+            <a href="library.html" class="filter-btn" style="text-decoration:none; font-size:0.9rem;">Voir tous
                 les artistes</a>
         </div>
 
@@ -317,7 +317,7 @@
                     <thead>
                         <tr>
                             <th>Artiste</th>
-                            <th>Titres Uniques Ã‰coutÃ©s</th>
+                            <th>Titres Uniques écoutés</th>
                             <th>Jauge</th>
                         </tr>
                     </thead>
@@ -329,7 +329,7 @@
         <!-- HEATMAP GITHUB STYLE -->
         <div class="card" style="margin-top: 20px;">
             <div class="chart-header">
-                <h2>ðŸ“… Historique Annuel</h2>
+                <h2>Historique Annuel</h2>
                 <!-- SÃ©lecteur d'annÃ©e -->
                 <select id="heatmap-year-select" class="filter-btn" style="background:#181818; color:white;">
                     <option value="2025">2025</option>
@@ -340,7 +340,7 @@
                 <div class="heatmap-grid" id="heatmap-grid"></div>
             </div>
             <p style="text-align:center; font-size:0.8rem; color:#666; margin-top:10px;">Plus c'est vert, plus vous
-                avez Ã©coutÃ© de musique ce jour-lÃ  !</p>
+                avez écouté de musique ce jour-là  !</p>
         </div>
 
 
@@ -348,7 +348,7 @@
         <br>
         <hr style="border-color:#333"><br>
         <!-- Section API Spotify (Bas de page) -->
-        <h2>ðŸ”¥ Vos Tops du Moment (API Direct)</h2>
+        <h2>Vos Tops du Moment (API Direct)</h2>
         <div class="controls">
             <button class="filter-btn active" onclick="changeRange('short_term', this)">Mois</button>
             <button class="filter-btn" onclick="changeRange('medium_term', this)">6 Mois</button>
@@ -445,13 +445,14 @@
             document.getElementById('dashboard').classList.remove('hidden');
             
             currentToken = response.access_token;
+
+            const resProfile = await fetch("https://api.spotify.com/v1/me", { headers: { Authorization: `Bearer ${currentToken}` } });
+            const profile = await resProfile.json();
+
             // Après avoir récupéré 'response.access_token' et 'profile'
             localStorage.setItem('spotify_token', response.access_token);
             localStorage.setItem('spotify_token_time', Date.now().toString());
             localStorage.setItem('my_spotify_id', profile.id);
-
-            const resProfile = await fetch("https://api.spotify.com/v1/me", { headers: { Authorization: `Bearer ${currentToken}` } });
-            const profile = await resProfile.json();
             
             currentUserId = profile.id;
 
@@ -1025,6 +1026,7 @@
     </script>
 </body>
 </html>
+
 
 
 
