@@ -252,13 +252,33 @@
         document.getElementById('artist-name').innerText = artistName;
 
         // 1. Trouver l'artiste sur Spotify (ID + photo + tags)
-        const searchRes = await spotifyFetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(artistName)}&type=artist&limit=1`);
+        const searchRes = await spotifyFetch(
+            `https://api.spotify.com/v1/search?q=${encodeURIComponent(artistName)}&type=artist&limit=5`
+        );
         if (!searchRes || !searchRes.artists.items.length) {
             document.getElementById('artist-stats').innerText = "Artiste introuvable sur Spotify.";
             return;
         }
-        const artist = searchRes.artists.items[0];
+        
+        // Debug éventuel : voir les candidats dans la console
+        console.log('Résultats Spotify pour', artistName, searchRes.artists.items);
+        
+        // On essaie de choisir le meilleur candidat par nom
+        const items = searchRes.artists.items;
+        const normalizedTarget = artistName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, '');
+        
+        let best = items[0];
+        for (const cand of items) {
+            const normalizedName = cand.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, '');
+            if (normalizedName === normalizedTarget) {
+                best = cand;
+                break;
+            }
+        }
+        
+        const artist = best;
         const artistId = artist.id;
+
 
         // Photo artiste
         const photoUrl = artist.images?.[0]?.url || '';
