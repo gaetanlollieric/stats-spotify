@@ -249,49 +249,53 @@
     // --- 4. RÉCUPÉRATION IMAGES API SPOTIFY ---
     async function fetchImagesForBatch(items) {
         if (!spotifyToken) return;
-
-        // On ne traite que ceux qui n'ont pas encore d'image
+    
         const missingImages = items.filter(i => !i.image);
         if (missingImages.length === 0) return;
-
-        // On fait les requêtes une par une (ou par petits groupes) pour éviter le rate-limit
+    
         for (let artist of missingImages) {
             try {
-                // Recherche API Spotify
-                const res = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(artist.name)}&type=artist&limit=1`, {
-                    headers: { Authorization: `Bearer ${spotifyToken}` }
-                });
+                const res = await fetch(
+                    `https://api.spotify.com/v1/search?q=${encodeURIComponent(artist.name)}&type=artist&limit=1`,
+                    { headers: { Authorization: `Bearer ${spotifyToken}` } }
+                );
                 
-                if (res.status === 429) { 
-                    console.warn("Trop de requêtes, pause..."); 
-                    await new Promise(r => setTimeout(r, 2000)); // Pause de 2s si rate limit
-                    continue; 
+                if (res.status === 401 || res.status === 400) {
+                    console.warn("Token invalide ou expiré pour Spotify.");
+                    return; // On arrête là, il faudra se reconnecter sur le dashboard
                 }
-
+    
+                if (res.status === 429) {
+                    console.warn("Trop de requêtes, pause 2s...");
+                    await new Promise(r => setTimeout(r, 2000));
+                    continue;
+                }
+    
                 const json = await res.json();
                 if (json.artists?.items?.length > 0) {
                     const spotArt = json.artists.items[0];
                     if (spotArt.images?.length > 0) {
-                        // On prend la 2ème image (souvent 300x300) ou la dernière (plus petite) pour optimiser
                         const bestImg = spotArt.images.length > 1 ? spotArt.images[1].url : spotArt.images[0].url;
                         
-                        // 1. Mise à jour donnée
+                        // 1. Met à jour l'objet en mémoire
                         artist.image = bestImg;
                         
-                        // 2. Mise à jour visuelle immédiate
-                        const imgEl = document.querySelector(`img[data-name="${CSS.escape(artist.name)}"]`);
+                        // 2. Met à jour le DOM (on sélectionne l'image par son data-name)
+                        const safeName = CSS.escape(artist.name);
+                        const imgEl = document.querySelector(`img[data-name="${safeName}"]`);
                         if (imgEl) {
                             imgEl.src = bestImg;
                         }
                     }
                 }
             } catch (e) {
-                console.error("Erreur img", artist.name);
+                console.error("Erreur en récupérant l'image de", artist.name, e);
             }
-            // Petite pause de 100ms entre chaque requête pour être gentil avec l'API
-            await new Promise(r => setTimeout(r, 100));
+            // Pause pour éviter de spam l'API
+            await new Promise(r => setTimeout(r, 120));
         }
     }
+
 
     // --- 5. CONTRÔLES ---
     function updatePaginationInfo() {
