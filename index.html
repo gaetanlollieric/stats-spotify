@@ -531,7 +531,7 @@
         const select = document.createElement('select');
         select.className = 'filter-btn';
         Object.assign(select.style, { backgroundColor: '#181818', color: 'white', border: '1px solid #555' });
-        select.innerHTML = '<option value="all">ðŸŽµ Tous les genres</option>';
+        select.innerHTML = '<option value="all">Tous les genres</option>';
         Array.from(allGenres).sort().forEach(g => {
             select.innerHTML += `<option value="${g}">${g.charAt(0).toUpperCase() + g.slice(1)}</option>`;
         });
@@ -666,12 +666,12 @@
         document.getElementById('db-unique-tracks').innerText = uniqueSet.size;
 
         const titleEl = document.getElementById('top-tracks-title');
-        let info = `(${count} Ã©coutes)`;
+        let info = `(${count} écoutes)`;
         if (currentDayFilter !== null) {
             const days = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
-            info += ` â€¢ ${days[currentDayFilter]}`;
+            info += `${days[currentDayFilter]}`;
         }
-        titleEl.innerText = `ðŸ† Top 10 ${currentGenre!=='all'?currentGenre:''} ${info}`;
+        titleEl.innerText = `Top 10 ${currentGenre!=='all'?currentGenre:''} ${info}`;
 
         renderChart(data);
 
@@ -687,7 +687,7 @@
 
         const tbody = document.getElementById('db-top-tracks');
         tbody.innerHTML = '';
-        if (!sortedTracks.length) tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:20px;">Rien trouvÃ©...</td></tr>';
+        if (!sortedTracks.length) tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:20px;">Rien trouvé...</td></tr>';
         else sortedTracks.forEach(([key, c]) => {
             const [name, artist] = key.split('###');
             tbody.innerHTML += `<tr><td><strong>${name}</strong></td><td>${artist}</td><td><span class="count-badge">${c}</span></td></tr>`;
@@ -852,8 +852,8 @@
         if (currentTop10URIs.length > 0) {
             playBtn.style.display = 'block';
             playBtn.innerText = displayedUserId === currentUserId 
-                ? `â–¶ï¸ Lancer ce Top 10 (${currentTop10URIs.length})` 
-                : `ðŸ“¥ Ajouter Ã  ma file d'attente`;
+                ? `Lancer ce Top 10 (${currentTop10URIs.length})` 
+                : `Ajouter à ma file d'attente`;
             playBtn.style.backgroundColor = displayedUserId === currentUserId ? '#1DB954' : '#e91429';
         } else { playBtn.style.display = 'none'; }
     }
@@ -870,7 +870,7 @@
             const dRes = await fetch('https://api.spotify.com/v1/me/player/devices', { headers: { Authorization: `Bearer ${currentToken}` } });
             const dData = await dRes.json();
             const devices = dData.devices || [];
-            if (!devices.length) return alert("âš ï¸ Aucun appareil dÃ©tectÃ©. Lancez Spotify !");
+            if (!devices.length) return alert("Désolé aucun appareil en cours de lecture. Lance Spotify !");
             
             const targetDevice = devices.find(d => d.is_active) || devices[0];
             
@@ -881,7 +881,7 @@
                 });
                 if(r.ok) count++;
             }
-            btn.innerText = `âœ… ${count} titres ajoutÃ©s !`;
+            btn.innerText = `${count} titres ajoutés !`;
         } catch (e) { console.error(e); alert("Erreur technique."); } 
         finally { setTimeout(() => btn.innerText = originalText, 3000); }
     }
@@ -931,7 +931,7 @@
 
     async function timeTravel(period) {
         const container = document.getElementById('time-travel-result');
-        container.innerHTML = '<p>Voyage temporel en cours... ðŸŒ€</p>';
+        container.innerHTML = '<p>Voyage temporel en cours...</p>';
     
         const date = new Date();
         let label = "";
@@ -965,7 +965,7 @@
         if (error || !data || data.length === 0) {
             container.innerHTML = `
                 <h3 style="color:#e91429">Rien trouvÃ© ðŸ˜¢</h3>
-                <p>Tu n'as rien Ã©coutÃ© le <strong>${prettyDate}</strong> (${label}).</p>
+                <p>Tu n'as rien écouté le <strong>${prettyDate}</strong> (${label}).</p>
             `;
             return;
         }
@@ -1026,6 +1026,7 @@
     </script>
 </body>
 </html>
+
 
 
 
