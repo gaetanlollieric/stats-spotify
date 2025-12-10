@@ -7,29 +7,18 @@
     <style>
         /* --- DESIGN MODERNE ÉPURÉ --- */
         :root {
-            --primary: #1ED760;
-            --bg-main: #0b0b0b;
-            --bg-elevated: #181818; /* Fond des cartes */
-            --bg-hover: #222222;
-            --text-main: #FFFFFF;
-            --text-secondary: #A7A7A7;
-            --border-subtle: rgba(255, 255, 255, 0.08);
-            --radius-lg: 16px;
-            --radius-full: 999px;
+            --primary: #1ED760; --bg-main: #0b0b0b; --bg-elevated: #181818;
+            --bg-hover: #222222; --text-main: #FFFFFF; --text-secondary: #A7A7A7;
+            --border-subtle: rgba(255, 255, 255, 0.08); --radius-lg: 16px; --radius-full: 999px;
             --font-stack: 'Circular', -apple-system, sans-serif;
         }
+        body { font-family: var(--font-stack); background-color: var(--bg-main); color: var(--text-main); margin: 0; padding: 30px; }
+        .container { max-width: 1200px; margin: 0 auto; min-height: 80vh; display: flex; flex-direction: column; }
 
-        body {
-            font-family: var(--font-stack); background-color: var(--bg-main);
-            color: var(--text-main); margin: 0; padding: 30px;
-        }
-        
-        .container { max-width: 1200px; margin: 0 auto; } /* Plus large pour les grosses cartes */
-
-        /* Header Sticky effet "Verre" */
+        /* Header Sticky */
         .header-controls {
             position: sticky; top: 0; z-index: 100;
-            background: rgba(11, 11, 11, 0.85); backdrop-filter: blur(12px);
+            background: rgba(11, 11, 11, 0.90); backdrop-filter: blur(15px);
             padding: 20px 0; border-bottom: 1px solid var(--border-subtle);
             margin: -30px -30px 30px -30px; padding-left: 30px; padding-right: 30px;
         }
@@ -39,7 +28,6 @@
         .back-btn:hover { color: var(--primary); }
         h1 { margin: 0; color: var(--text-main); font-size: 1.8rem; font-weight: 700; }
 
-        /* Input & Boutons */
         .search-bar {
             width: 100%; padding: 14px 24px; border-radius: var(--radius-full);
             border: 1px solid var(--border-subtle); background: var(--bg-elevated);
@@ -57,52 +45,43 @@
         .sort-btn:hover { background: var(--bg-hover); transform: scale(1.02); }
         .sort-btn.active { background: var(--primary); color: black; }
 
-        /* GRILLE DES ARTISTES (MODIFIÉE) */
-        .artist-list {
-            display: grid;
-            /* Cartes plus larges : min 280px au lieu de 200px */
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 24px;
-        }
-
+        /* GRILLE */
+        .artist-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px; flex-grow: 1; }
         .artist-card {
-            background: var(--bg-elevated);
-            border: 1px solid var(--border-subtle);
-            border-radius: var(--radius-lg);
-            padding: 20px; /* Plus d'espace interne */
-            display: flex;
-            align-items: center; /* Centré verticalement */
-            gap: 20px; /* Espace entre photo et texte */
-            cursor: pointer;
-            transition: transform 0.2s, background 0.2s, box-shadow 0.2s;
+            background: var(--bg-elevated); border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg); padding: 20px; display: flex; align-items: center; gap: 20px;
+            cursor: pointer; transition: transform 0.2s, background 0.2s;
         }
-
         .artist-card:hover {
-            transform: translateY(-4px);
-            background: var(--bg-hover);
-            border-color: rgba(255,255,255,0.15);
-            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+            transform: translateY(-4px); background: var(--bg-hover);
+            border-color: rgba(255,255,255,0.15); box-shadow: 0 8px 24px rgba(0,0,0,0.2);
         }
-        
-        /* Avatar Rond */
         .artist-avatar {
-            width: 80px; height: 80px; /* Taille de l'image */
-            border-radius: 50%;
-            object-fit: cover;
-            background-color: #333; /* Fallback si pas d'image */
-            flex-shrink: 0; /* Empêche l'image de s'écraser */
-            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            width: 70px; height: 70px; border-radius: 50%; object-fit: cover;
+            background-color: #333; flex-shrink: 0; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            transition: opacity 0.3s ease;
         }
-
         .artist-info { flex-grow: 1; overflow: hidden; }
         .artist-name { font-size: 1.1rem; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; margin-bottom: 4px; }
         .artist-count { font-size: 0.9rem; color: var(--text-secondary); }
-        
         .rank-badge {
             background: rgba(30, 215, 96, 0.1); color: var(--primary);
             font-size: 0.85rem; padding: 4px 10px; border-radius: 6px;
             font-weight: 800; min-width: 30px; text-align: center;
         }
+        
+        /* PAGINATION CONTROLS */
+        .pagination-controls {
+            display: flex; justify-content: center; align-items: center; gap: 20px;
+            margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--border-subtle);
+        }
+        .page-btn {
+            background: var(--bg-elevated); color: white; border: 1px solid var(--border-subtle);
+            padding: 10px 20px; border-radius: var(--radius-full); cursor: pointer; transition: 0.2s;
+        }
+        .page-btn:hover:not(:disabled) { background: var(--bg-hover); border-color: white; }
+        .page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .page-info { color: var(--text-secondary); font-size: 0.9rem; }
 
         .loader { text-align: center; color: var(--text-secondary); margin-top: 50px; }
     </style>
@@ -127,129 +106,228 @@
 
     <div id="loader" class="loader">Chargement de la bibliothèque...</div>
     <div id="artist-grid" class="artist-list"></div>
+    
+    <!-- Pagination -->
+    <div class="pagination-controls" id="pagination-controls" style="display:none;">
+        <button class="page-btn" id="prevBtn" onclick="changePage(-1)">← Précédent</button>
+        <span class="page-info" id="pageInfo">Page 1</span>
+        <button class="page-btn" id="nextBtn" onclick="changePage(1)">Suivant →</button>
+    </div>
 </div>
 
 <script>
-    // --- CONFIG ---
+    // --- CONFIG SUPABASE ---
     const SUPABASE_URL = 'https://kvrwymmsgwstvyqmscuy.supabase.co'; 
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2cnd5bW1zZ3dzdHZ5cW1zY3V5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3NjAxODksImV4cCI6MjA3OTMzNjE4OX0.XNJOD5MzOaM8u_tRuvXZvx2Q_mHUTbk-mAbUFnoU3H4'; 
     const { createClient } = supabase;
     const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    let allArtists = [];
+    // --- VARIABLES GLOBALES ---
+    let allArtists = [];        // Tous les artistes depuis Supabase
+    let filteredArtists = [];   // Artistes après recherche/tri
     let currentSort = 'count';
+    let currentPage = 1;
+    const ITEMS_PER_PAGE = 50;  // Pagination demandée
 
+    // Récupération du token Spotify sauvegardé dans l'accueil (index.html)
+    let spotifyToken = localStorage.getItem('spotify_token');
+    
+    // Vérification rapide de validité du token
+    const tokenTime = localStorage.getItem('spotify_token_time');
+    if (tokenTime && (Date.now() - tokenTime > 3600000)) {
+        spotifyToken = null; // Token expiré
+        console.warn("Token Spotify expiré. Les images ne chargeront pas.");
+    }
+
+    // --- 1. CHARGEMENT INITIAL (SUPABASE) ---
     async function fetchAllArtists() {
         const myId = localStorage.getItem('my_spotify_id');
-        if (!myId) {
-            window.location.href = 'index.html';
-            return;
-        }
+        if (!myId) { window.location.href = 'index.html'; return; }
     
-        // MODIFICATION ICI : On demande aussi 'image_url' (ou le nom de ta colonne image)
+        // On récupère juste les noms (on a retiré image_url pour éviter le crash)
         const { data, error } = await sb
             .from('listening_history')
-            .select(`
-                tracks!inner (
-                    artists!inner ( name, image_url ) 
-                )
-            `)
+            .select('tracks!inner(artists!inner(name))')
             .eq('user_id', myId)
             .limit(50000); 
     
         if (error) { 
             console.error(error); 
-            document.getElementById('loader').innerText = "Erreur chargement.";
+            document.getElementById('loader').innerText = "Erreur Supabase"; 
             return; 
         }
     
-        // Aggrégation plus intelligente (on garde l'image)
+        // Aggrégation des données
         const artistsMap = {};
-        
         data.forEach(row => {
-            // Sécurité si données manquantes
-            const artistData = row.tracks?.artists;
-            if (!artistData) return;
-
-            const name = artistData.name;
-            const img = artistData.image_url; // Récupération de l'image
-
-            if (!artistsMap[name]) {
-                artistsMap[name] = { 
-                    name: name, 
-                    count: 0, 
-                    image: img // On stocke l'image trouvée
-                };
+            const a = row.tracks?.artists;
+            if (!a) return;
+            if (!artistsMap[a.name]) {
+                artistsMap[a.name] = { name: a.name, count: 0, image: null };
             }
-            artistsMap[name].count++;
+            artistsMap[a.name].count++;
         });
 
-        // Transformation en tableau
         allArtists = Object.values(artistsMap);
+        
+        // Tri initial
+        sortArtists();
         
         document.getElementById('total-count').innerText = `${allArtists.length} Artistes`;
         document.getElementById('loader').style.display = 'none';
-        renderArtists();
+        document.getElementById('pagination-controls').style.display = 'flex';
+        
+        renderPage();
     }
 
-    function renderArtists() {
-        const container = document.getElementById('artist-grid');
+    // --- 2. GESTION DU TRI ET FILTRE ---
+    function sortArtists() {
+        if (currentSort === 'count') {
+            allArtists.sort((a, b) => b.count - a.count);
+        } else {
+            allArtists.sort((a, b) => a.name.localeCompare(b.name));
+        }
+        applyFilter();
+    }
+
+    function applyFilter() {
         const searchVal = document.getElementById('searchInput').value.toLowerCase();
-        
+        filteredArtists = allArtists.filter(a => a.name.toLowerCase().includes(searchVal));
+        currentPage = 1; // Retour page 1 si on cherche
+        renderPage();
+    }
+
+    // --- 3. RENDU DE LA PAGE (PAGINATION) ---
+    function renderPage() {
+        const container = document.getElementById('artist-grid');
         container.innerHTML = '';
 
-        let filtered = allArtists.filter(a => a.name.toLowerCase().includes(searchVal));
-
-        if (currentSort === 'count') {
-            filtered.sort((a, b) => b.count - a.count);
-        } else {
-            filtered.sort((a, b) => a.name.localeCompare(b.name));
-        }
-
-        if (filtered.length === 0) {
+        if (filteredArtists.length === 0) {
             container.innerHTML = '<p style="grid-column:1/-1; text-align:center; color:#666;">Aucun artiste trouvé.</p>';
+            updatePaginationInfo();
             return;
         }
 
+        // Calcul des indices pour la pagination
+        const start = (currentPage - 1) * ITEMS_PER_PAGE;
+        const end = start + ITEMS_PER_PAGE;
+        const pageItems = filteredArtists.slice(start, end);
+
         const fragment = document.createDocumentFragment();
         
-        // Image par défaut si l'URL est vide
-        const defaultImg = "https://ui-avatars.com/api/?background=333&color=fff&name=";
-
-        filtered.forEach((a, index) => {
+        pageItems.forEach((a, index) => {
             const card = document.createElement('div');
             card.className = 'artist-card';
             card.onclick = () => window.location.href = `artist.html?name=${encodeURIComponent(a.name)}`;
 
-            const rankDisplay = currentSort === 'count' ? `<div class="rank-badge">#${index + 1}</div>` : '';
+            // Rang global correct (même en page 2, 3...)
+            const globalIndex = start + index + 1;
+            const rankDisplay = currentSort === 'count' ? `<div class="rank-badge">#${globalIndex}</div>` : '';
             
-            // Gestion de l'image : si a.image existe on l'utilise, sinon on génère un avatar avec les initiales
-            const imageUrl = a.image ? a.image : (defaultImg + encodeURIComponent(a.name));
+            // Image fallback (initiales)
+            const fallbackUrl = `https://ui-avatars.com/api/?background=333&color=1ED760&font-size=0.4&name=${encodeURIComponent(a.name)}`;
+            const displayImg = a.image || fallbackUrl;
 
             card.innerHTML = `
-                <img src="${imageUrl}" alt="${a.name}" class="artist-avatar" loading="lazy">
-                
+                <img src="${displayImg}" data-name="${a.name}" alt="${a.name}" class="artist-avatar" loading="lazy">
                 <div class="artist-info">
                     <span class="artist-name">${a.name}</span>
                     <span class="artist-count">${a.count} écoutes</span>
                 </div>
-                
                 ${rankDisplay}
             `;
             fragment.appendChild(card);
         });
 
         container.appendChild(fragment);
+        updatePaginationInfo();
+        
+        // IMPORTANT: On lance la recherche d'images UNIQUEMENT pour cette page
+        fetchImagesForBatch(pageItems);
     }
+
+    // --- 4. RÉCUPÉRATION IMAGES API SPOTIFY ---
+    async function fetchImagesForBatch(items) {
+        if (!spotifyToken) return;
+
+        // On ne traite que ceux qui n'ont pas encore d'image
+        const missingImages = items.filter(i => !i.image);
+        if (missingImages.length === 0) return;
+
+        // On fait les requêtes une par une (ou par petits groupes) pour éviter le rate-limit
+        for (let artist of missingImages) {
+            try {
+                // Recherche API Spotify
+                const res = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(artist.name)}&type=artist&limit=1`, {
+                    headers: { Authorization: `Bearer ${spotifyToken}` }
+                });
+                
+                if (res.status === 429) { 
+                    console.warn("Trop de requêtes, pause..."); 
+                    await new Promise(r => setTimeout(r, 2000)); // Pause de 2s si rate limit
+                    continue; 
+                }
+
+                const json = await res.json();
+                if (json.artists?.items?.length > 0) {
+                    const spotArt = json.artists.items[0];
+                    if (spotArt.images?.length > 0) {
+                        // On prend la 2ème image (souvent 300x300) ou la dernière (plus petite) pour optimiser
+                        const bestImg = spotArt.images.length > 1 ? spotArt.images[1].url : spotArt.images[0].url;
+                        
+                        // 1. Mise à jour donnée
+                        artist.image = bestImg;
+                        
+                        // 2. Mise à jour visuelle immédiate
+                        const imgEl = document.querySelector(`img[data-name="${CSS.escape(artist.name)}"]`);
+                        if (imgEl) {
+                            imgEl.src = bestImg;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error("Erreur img", artist.name);
+            }
+            // Petite pause de 100ms entre chaque requête pour être gentil avec l'API
+            await new Promise(r => setTimeout(r, 100));
+        }
+    }
+
+    // --- 5. CONTRÔLES ---
+    function updatePaginationInfo() {
+        const totalPages = Math.ceil(filteredArtists.length / ITEMS_PER_PAGE);
+        document.getElementById('pageInfo').innerText = `Page ${currentPage} sur ${totalPages || 1}`;
+        document.getElementById('prevBtn').disabled = currentPage === 1;
+        document.getElementById('nextBtn').disabled = currentPage >= totalPages;
+        
+        // Remonter en haut de page en changeant de page
+        if(document.getElementById('artist-grid').children.length > 0) {
+            // window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    }
+
+    window.changePage = (delta) => {
+        const totalPages = Math.ceil(filteredArtists.length / ITEMS_PER_PAGE);
+        const newPage = currentPage + delta;
+        if (newPage >= 1 && newPage <= totalPages) {
+            currentPage = newPage;
+            renderPage();
+            window.scrollTo({ top: 0, behavior: 'smooth' }); // Remonter
+        }
+    };
 
     window.setSort = (mode) => {
         currentSort = mode;
         document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
         event.target.classList.add('active');
-        renderArtists();
+        sortArtists(); // Re-trie tout
     };
 
-    document.getElementById('searchInput').addEventListener('input', renderArtists);
+    document.getElementById('searchInput').addEventListener('input', () => {
+        applyFilter(); // Re-filtre et revient page 1
+    });
+
+    // Lancement
     fetchAllArtists();
 </script>
 
