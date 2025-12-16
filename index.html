@@ -240,7 +240,7 @@
 
     <!-- DASHBOARD -->
     <div id="dashboard" class="container hidden">
-        <!-- User Select Bar (InsÃ©rÃ© par JS) -->
+        <!-- User Select Bar (Inséré par JS) -->
 
         <h1>Bonjour <span id="user-display-name">...</span></h1>
 
@@ -263,11 +263,11 @@
         <!-- Graphique Rythme -->
         <div class="card">
             <div class="chart-header">
-                <h2>ðŸ“Š Votre Rythme</h2>
+                <h2>Votre Rythme</h2>
                 <div class="chart-toggles">
-                    <button class="filter-btn active" id="btn-chart-daily" onclick="switchChartMode('daily')">ðŸ“…
+                    <button class="filter-btn active" id="btn-chart-daily" onclick="switchChartMode('daily')">
                         Jours</button>
-                    <button class="filter-btn" id="btn-chart-hourly" onclick="switchChartMode('hourly')">â°
+                    <button class="filter-btn" id="btn-chart-hourly" onclick="switchChartMode('hourly')">
                         Heures</button>
                 </div>
             </div>
@@ -304,7 +304,7 @@
             </div>
         </div>
 
-        <!-- SECTION FIDÃ‰LITÃ‰ ARTISTE -->
+        <!-- SECTION FIDà‰LITà‰ ARTISTE -->
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:40px;">
             <h2>Fidélité Artiste</h2>
             <a href="library.html" class="filter-btn" style="text-decoration:none; font-size:0.9rem;">Voir tous
@@ -330,7 +330,7 @@
         <div class="card" style="margin-top: 20px;">
             <div class="chart-header">
                 <h2>Historique Annuel</h2>
-                <!-- SÃ©lecteur d'annÃ©e -->
+                <!-- Sélecteur d'année -->
                 <select id="heatmap-year-select" class="filter-btn" style="background:#181818; color:white;">
                     <option value="2025">2025</option>
                     <option value="2024">2024</option>
@@ -387,18 +387,18 @@
     let allGenres = new Set();
     let allUsersList = []; 
     
-    // FILTRES Ã‰TAT
+    // FILTRES à‰TAT
     let currentGenre = 'all';
-    let currentPeriod = '7'; 
+    let currentPeriod = 'all'; 
     let currentSpecificValue = null; 
     let currentChartMode = 'daily'; 
     let currentDayFilter = null; 
-    let currentHeatmapYear = new Date().getFullYear(); // AnnÃ©e par dÃ©faut pour la heatmap
+    let currentHeatmapYear = new Date().getFullYear(); // Année par défaut pour la heatmap
 
     let currentTop10URIs = []; 
 
     // --- INIT ---
-    // Fonction pour avoir la date locale (YYYY-MM-DD) sans dÃ©calage UTC
+    // Fonction pour avoir la date locale (YYYY-MM-DD) sans décalage UTC
     function getLocalDateString(dateObj) {
         const offset = dateObj.getTimezoneOffset() * 60000;
         const localTime = new Date(dateObj.getTime() - offset);
@@ -414,7 +414,7 @@
         const code = params.get("code");
         if (code) { await handleSpotifyCallback(code); }
         
-        // Init sÃ©lecteur annÃ©e heatmap
+        // Init sélecteur année heatmap
         const yearSel = document.getElementById('heatmap-year-select');
         yearSel.value = currentHeatmapYear;
         yearSel.onchange = (e) => {
@@ -488,7 +488,7 @@
         // MODIFIE CELA dans loadSupabaseStats
         const { data, error } = await sb
             .from('listening_history')
-            .select(`played_at, tracks (spotify_id, name, duration_ms, artists (name, genres))`) // J'ai retirÃ© valence, energy, etc.
+            .select(`played_at, tracks (spotify_id, name, duration_ms, artists (name, genres))`) // J'ai retiré valence, energy, etc.
             .eq('user_id', targetId)
             .order('played_at', { ascending: false })
             .limit(50000); // Ou ta logique de pagination
@@ -538,7 +538,7 @@
         select.value = currentGenre;
         select.addEventListener('change', (e) => { currentGenre = e.target.value; updateDashboard(); });
 
-        // PÃ©riodes
+        // Périodes
         const periodGroup = document.createElement('div');
         periodGroup.style.display = 'flex'; periodGroup.style.gap = '5px'; periodGroup.style.alignItems = 'center';
 
@@ -560,7 +560,7 @@
         createBtn('30', '30 Jours');
         createBtn('all', 'Tout');
 
-                // ... (le dÃ©but de setupTopControls reste pareil)
+                // ... (le début de setupTopControls reste pareil)
 
         const dateInput = document.createElement('input');
         dateInput.type = 'date'; 
@@ -579,24 +579,24 @@
         dateInput.addEventListener('change', (e) => {
             const val = e.target.value;
             if (val) {
-                // 1. On dÃ©sactive les autres boutons (7j, 30j...)
+                // 1. On désactive les autres boutons (7j, 30j...)
                 document.querySelectorAll('.controls button, #top-controls-bar button').forEach(b => b.classList.remove('active'));
                 
-                // 2. On dÃ©finit le mode "Date SpÃ©cifique"
+                // 2. On définit le mode "Date Spécifique"
                 currentPeriod = 'specific_date';
                 currentSpecificValue = val;
                 
                 // 3. Feedback visuel
                 dateInput.style.borderColor = 'var(--spotify-green)';
                 
-                // 4. On reset le filtre "Jour de la semaine" du graphique pour Ã©viter les conflits
+                // 4. On reset le filtre "Jour de la semaine" du graphique pour éviter les conflits
                 currentDayFilter = null;
                 switchChartMode('daily'); 
 
-                // 5. On lance la mise Ã  jour
+                // 5. On lance la mise à  jour
                 updateDashboard();
             } else {
-                // Si l'utilisateur efface la date, on revient Ã  "7 jours" par dÃ©faut
+                // Si l'utilisateur efface la date, on revient à  "7 jours" par défaut
                 dateInput.style.borderColor = '#555';
                 currentPeriod = '7';
                 updateDashboard();
@@ -604,9 +604,6 @@
         });
 
         periodGroup.appendChild(dateInput);
-        
-        // ... (la suite reste pareille)
-
         topBar.appendChild(select);
         topBar.appendChild(periodGroup);
     }
@@ -623,12 +620,12 @@
         const now = new Date();
         let filtered = allHistoryData;
 
-        // 1. Filtre Date SpÃ©cifique (via Heatmap ou Calendrier)
+        // 1. Filtre Date Spécifique (via Heatmap ou Calendrier)
         if (currentPeriod === 'specific_date' && currentSpecificValue) {
             // CORRECTION ICI : On compare avec la date locale
             filtered = filtered.filter(d => getLocalDateString(d.played_at) === currentSpecificValue);
         } 
-        // 2. Filtres PÃ©riodes classiques
+        // 2. Filtres Périodes classiques
         else if (currentPeriod === '7') {
             const cutoff = new Date(); cutoff.setDate(now.getDate() - 7);
             filtered = filtered.filter(d => d.played_at >= cutoff);
@@ -694,7 +691,7 @@
         });
 
         setupPlayButton();
-        renderLoyalty(data);     // Affiche la FidÃ©litÃ©
+        renderLoyalty(data);     // Affiche la Fidélité
     }
 
     // --- HEATMAP GITHUB STYLE ---
@@ -728,7 +725,7 @@
         }
 
         let current = new Date(startDate);
-        // On force l'heure Ã  midi pour Ã©viter les sauts d'heure d'Ã©tÃ©/hiver lors de l'incrÃ©mentation
+        // On force l'heure à  midi pour éviter les sauts d'heure d'été/hiver lors de l'incrémentation
         current.setHours(12, 0, 0, 0); 
 
         while (current <= endDate) {
@@ -748,7 +745,7 @@
             }
             
             cell.className = `heatmap-cell level-${level}`;
-            cell.title = `${dateKey}: ${count} Ã©coutes`; // Affichage au survol
+            cell.title = `${dateKey}: ${count} écoutes`; // Affichage au survol
             
             cell.onclick = () => {
                 const dateInput = document.getElementById('date-picker');
@@ -756,7 +753,7 @@
                     // 1. On remplit le champ date visuellement
                     dateInput.value = dateKey;
                     
-                    // 2. On met Ã  jour les variables globales pour le filtre
+                    // 2. On met à  jour les variables globales pour le filtre
                     currentPeriod = 'specific_date';
                     currentSpecificValue = dateKey;
                     
@@ -764,17 +761,17 @@
                     resetSpecificInputs(); // Nettoie les autres boutons actifs
                     dateInput.style.borderColor = 'var(--spotify-green)';
 
-                    // 4. On lance la mise Ã  jour du dashboard
+                    // 4. On lance la mise à  jour du dashboard
                     updateDashboard();
                     
-                    // (Optionnel) On scrolle vers le haut pour voir le rÃ©sultat
+                    // (Optionnel) On scrolle vers le haut pour voir le résultat
                     document.getElementById('dashboard').scrollIntoView({ behavior: 'smooth' });
                 }
             };
 
             grid.appendChild(cell);
             
-            // Ajout sÃ»r d'un jour
+            // Ajout sà»r d'un jour
             current.setDate(current.getDate() + 1);
         }
     }
@@ -860,7 +857,7 @@
 
     async function playTop10() {
         if (!currentToken) return alert("Veuillez vous reconnecter.");
-        if (!currentTop10URIs.length) return alert("Rien Ã  jouer.");
+        if (!currentTop10URIs.length) return alert("Rien à  jouer.");
 
         const btn = document.getElementById('play-top-10-btn');
         const originalText = btn.innerText;
@@ -886,7 +883,7 @@
         finally { setTimeout(() => btn.innerText = originalText, 3000); }
     }
 
-    // --- USER SELECTOR (CORRIGÃ‰) ---
+    // --- USER SELECTOR (CORRIGà‰) ---
     function setupUserSelector() {
         let bar = document.getElementById('user-select-bar');
         if (!bar) {
@@ -950,21 +947,21 @@
         const dateStr = getLocalDateString(date); // Utilise ta fonction existante
         const prettyDate = date.toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     
-        // On cherche les sons Ã©coutÃ©s CE jour-lÃ  (start -> end of day)
+        // On cherche les sons écoutés CE jour-là  (start -> end of day)
         const startOfDay = new Date(dateStr + 'T00:00:00');
         const endOfDay = new Date(dateStr + 'T23:59:59');
     
         const { data, error } = await sb
             .from('listening_history')
             .select(`played_at, tracks (name, artists (name))`)
-            .eq('user_id', displayedUserId) // Utilise l'ID affichÃ©
+            .eq('user_id', displayedUserId) // Utilise l'ID affiché
             .gte('played_at', startOfDay.toISOString())
             .lte('played_at', endOfDay.toISOString())
             .order('played_at', { ascending: true });
     
         if (error || !data || data.length === 0) {
             container.innerHTML = `
-                <h3 style="color:#e91429">Rien trouvÃ© ðŸ˜¢</h3>
+                <h3 style="color:#e91429">Rien trouvé</h3>
                 <p>Tu n'as rien écouté le <strong>${prettyDate}</strong> (${label}).</p>
             `;
             return;
@@ -972,7 +969,7 @@
     
         let html = `<h3>Le ${prettyDate}</h3><ul style="list-style:none; padding:0; text-align:left; max-width:400px; margin:0 auto;">`;
         
-        // On limite Ã  10 pour pas faire une liste gÃ©ante
+        // On limite à  10 pour pas faire une liste géante
         data.slice(0, 15).forEach(item => {
             const time = new Date(item.played_at).toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'});
             html += `<li style="border-bottom:1px solid #333; padding:5px 0; display:flex; justify-content:space-between;">
@@ -986,7 +983,7 @@
         container.innerHTML = html;
     }
         
-    // --- FIDÃ‰LITÃ‰ / EXPLORATION ---
+    // --- FIDà‰LITà‰ / EXPLORATION ---
     function renderLoyalty(data) {
         const tbody = document.getElementById('loyalty-table');
         tbody.innerHTML = '';
@@ -1026,6 +1023,7 @@
     </script>
 </body>
 </html>
+
 
 
 
