@@ -454,25 +454,28 @@
         
     function generateRandomString(l){let t='';const p='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';for(let i=0;i<l;i++)t+=p.charAt(Math.floor(Math.random()*p.length));return t;}
     async function generateCodeChallenge(v){const e=new TextEncoder();const d=e.encode(v);const dig=await window.crypto.subtle.digest('SHA-256',d);return btoa(String.fromCharCode(...new Uint8Array(dig))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/, '');}
-
+    
     window.addEventListener('load', async () => {
       const params = new URLSearchParams(window.location.search);
       const code = params.get('code');
     
       if (code) {
+        // 1) On traite UNE SEULE FOIS le callback OAuth
         await handleSpotifyCallback(code);
+    
+        // 2) On enlève ?code= de l'URL pour ne pas retraiter au reload
+        window.history.replaceState({}, document.title, window.location.pathname);
       } else {
-        // 🚀 AUTO-SESSION QUAND ON REVIENT DE LIBRARY / ARTIST
-        const savedToken = localStorage.getItem('spotifytoken');
-        const savedTokenTime = localStorage.getItem('spotifytokentime');
-        const savedUserId = localStorage.getItem('myspotifyid');
+        // 3) Auto-session si token déjà en localStorage (pas de redirection ici)
+        const savedToken = localStorage.getItem('spotify_token');
+        const savedTokenTime = localStorage.getItem('spotify_token_time');
+        const savedUserId = localStorage.getItem('my_spotify_id');
     
         if (savedToken && savedTokenTime && savedUserId) {
           const age = Date.now() - parseInt(savedTokenTime, 10);
           const ONE_HOUR = 3600000;
     
           if (age < ONE_HOUR) {
-            // On considère la session comme active
             currentToken = savedToken;
             currentUserId = savedUserId;
             displayedUserId = savedUserId;
@@ -480,9 +483,10 @@
             document.getElementById('login-section').classList.add('hidden');
             document.getElementById('dashboard').classList.remove('hidden');
     
-            // Optionnel : récupérer le nom stocké au moment du callback
-            document.getElementById('user-display-name').innerText =
-              localStorage.getItem('displayname') || 'Toi';
+            const savedName = localStorage.getItem('displayname');
+            if (savedName) {
+              document.getElementById('user-display-name').innerText = savedName;
+            }
     
             await loadUsersList();
             await loadSupabaseStats(currentUserId);
@@ -491,7 +495,7 @@
           }
         }
       }
-        
+            
         // Init sélecteur année heatmap
         const yearSel = document.getElementById('heatmap-year-select');
         yearSel.value = currentHeatmapYear;
@@ -502,26 +506,27 @@
     });
         
     document.getElementById('login-btn').addEventListener('click', async () => {
+      // (optionnel) nettoyer l'ancienne session
+      localStorage.removeItem('spotify_token');
+      localStorage.removeItem('spotify_token_time');
+      localStorage.removeItem('my_spotify_id');
     
-        // 🔥 IMPORTANT : forcer Spotify à redemander les nouveaux scopes (à faire UNE FOIS)
-        localStorage.removeItem('spotify_token');
+      const verifier = generateRandomString(128);
+      const challenge = await generateCodeChallenge(verifier);
+      localStorage.setItem('verifier', verifier);
     
-        const v = generateRandomString(128);
-        const c = await generateCodeChallenge(v);
-        localStorage.setItem("verifier", v);
+      const params = new URLSearchParams({
+        client_id: clientId,
+        response_type: 'code',
+        redirect_uri: redirectUri,
+        scope: scopes,
+        code_challenge_method: 'S256',
+        code_challenge: challenge,
+        // NE PAS METTRE show_dialog=true si tu ne veux pas le consentement à chaque fois
+      });
     
-        const p = new URLSearchParams({
-            client_id: clientId,
-            response_type: "code",
-            redirect_uri: redirectUri,
-            scope: scopes,
-            code_challenge_method: "S256",
-            code_challenge: c
-        });
-    
-        document.location = `https://accounts.spotify.com/authorize?${p.toString()}&show_dialog=true`;
+      document.location = 'https://accounts.spotify.com/authorize?' + params.toString();
     });
-
 
     async function handleSpotifyCallback(code) {
         const verifier = localStorage.getItem("verifier");
@@ -1131,5 +1136,6 @@
     </script>
 </body>
 </html>
+
 
 
