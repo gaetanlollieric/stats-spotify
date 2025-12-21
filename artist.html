@@ -386,9 +386,11 @@
                 return {
                     name: tName,
                     count,
-                    uri: t.uri
+                    uri: t.uri,
+                    id: t.id // <--- ajout important
                 };
             });
+
 
             // Trier par nombre d'écoutes (desc), mais on peut garder l'ordre original pour l'album, donc on ne trie pas pour l'affichage
             const totalAlbumPlays = enrichedTracks.reduce((acc, t) => acc + t.count, 0);
@@ -430,8 +432,11 @@
                     <tbody>
                         ${enrichedTracks.map((t, idx) => {
                             const isNew = t.count === 0;
+                            const onclick = t.id 
+                                ? `onclick="window.location.href='track.html?track_id=${encodeURIComponent(t.id)}'"` 
+                                : '';
                             return `
-                                <tr>
+                                <tr ${onclick} style="cursor:${t.id ? 'pointer' : 'default'};">
                                     <td>${idx+1}</td>
                                     <td class="track-name">
                                         ${t.name}
