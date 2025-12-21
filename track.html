@@ -284,36 +284,42 @@
 
   // --- Titres similaires (API recommandations) ---
   async function loadSimilarTracks() {
-    const res = await fetch(
-      `https://api.spotify.com/v1/recommendations?seed_tracks=${encodeURIComponent(trackId)}&limit=10&market=FR`,
-      { headers: { Authorization: `Bearer ${spotifyToken}` } }
+    const baseUrl = 'https://api.spotify.com/v1/recommendations';
+    const headers = { Authorization: `Bearer ${spotifyToken}` };
+  
+    // 1️⃣ Tentative avec market FR
+    let res = await fetch(
+      `${baseUrl}?seed_tracks=${trackId}&limit=10&market=FR`,
+      { headers }
     );
+  
+    // 2️⃣ Fallback sans market
+    if (res.status === 404) {
+      res = await fetch(
+        `${baseUrl}?seed_tracks=${trackId}&limit=10`,
+        { headers }
+      );
+    }
+  
+    // 3️⃣ Fallback avec artiste
+    if (res.status === 404) {
+      const track = await spotifyFetch(`https://api.spotify.com/v1/tracks/${trackId}`);
+      const artistId = track?.artists?.[0]?.id;
+      if (!artistId) return;
+  
+      res = await fetch(
+        `${baseUrl}?seed_artists=${artistId}&limit=10`,
+        { headers }
+      );
+    }
+  
     if (!res.ok) {
-      console.warn('Pas de recommandations pour ce titre', res.status);
+      console.warn('Reco impossible', res.status);
       return;
     }
+  
     const data = await res.json();
-    const tracks = data.tracks || [];
-    if (!tracks.length) return;
-
-    const listDiv = document.getElementById('similar-list');
-    listDiv.innerHTML = tracks.map(t => {
-      const cover = t.album?.images?.[2]?.url || t.album?.images?.[0]?.url || '';
-      const artists = t.artists.map(a => a.name).join(', ');
-      return `
-        <div class="similar-track">
-          <img src="${cover}" class="similar-cover" alt="${t.name}">
-          <div class="similar-meta">
-            <div class="similar-title">${t.name}</div>
-            <div class="similar-artist">${artists}</div>
-          </div>
-          <button class="similar-btn" onclick="openTrack('${t.id}')">Détail</button>
-          <button class="similar-btn" onclick="queueTrack('${t.uri}')">+ File</button>
-        </div>
-      `;
-    }).join('');
-
-    document.getElementById('similar-card').style.display = 'block';
+    renderSimilarTracks(data.tracks || []);
   }
 
   function openTrack(id) {
