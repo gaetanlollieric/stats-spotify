@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Détail du titre - Spotify Stats</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --spotify-green:#1ED760;
+      --bg-main:#0b0b0b;
+      --bg-elevated:#181818;
+      --text-main:#FFFFFF;
+      --text-secondary:#A7A7A7;
+      --border-subtle:rgba(255,255,255,0.08);
+      --radius-lg:16px;
+      --radius-full:999px;
+      --font-stack:'Circular',-apple-system,sans-serif;
+    }
+    body{
+      font-family:var(--font-stack);
+      background:var(--bg-main);
+      color:var(--text-main);
+      margin:0;
+      padding:30px;
+    }
+    .container{max-width:900px;margin:0 auto;}
+    a.back-btn{
+      text-decoration:none;
+      color:var(--text-secondary);
+      font-size:0.9rem;
+    }
+    a.back-btn:hover{color:var(--spotify-green);}
+    .track-header{
+      display:flex;
+      gap:24px;
+      margin-top:20px;
+      align-items:center;
+    }
+    .cover{
+      width:160px;
+      height:160px;
+      border-radius:12px;
+      object-fit:cover;
+      background:#333;
+      box-shadow:0 8px 24px rgba(0,0,0,0.5);
+    }
+    .meta h1{
+      margin:0 0 8px;
+      font-size:1.8rem;
+    }
+    .meta .artist{
+      color:var(--text-secondary);
+      margin-bottom:6px;
+    }
+    .meta .album{
+      color:var(--text-secondary);
+      font-size:0.9rem;
+    }
+    .meta .duration{
+      color:var(--text-secondary);
+      font-size:0.9rem;
+      margin-top:8px;
+    }
+    .btn-spotify{
+      margin-top:16px;
+      background:var(--spotify-green);
+      color:black;
+      border:none;
+      padding:10px 26px;
+      border-radius:var(--radius-full);
+      font-weight:700;
+      cursor:pointer;
+    }
+    .btn-spotify:hover{filter:brightness(1.1);}
+    .card{
+      margin-top:30px;
+      background:var(--bg-elevated);
+      border-radius:var(--radius-lg);
+      border:1px solid var(--border-subtle);
+      padding:20px;
+    }
+    h2{margin-top:0;font-size:1.3rem;}
+    .stat-row{
+      display:flex;
+      justify-content:space-between;
+      margin-bottom:8px;
+      color:var(--text-secondary);
+      font-size:0.95rem;
+    }
+    audio{width:100%;margin-top:10px;}
+  </style>
+</head>
+<body>
+<div class="container">
+  <a href="index.html" class="back-btn">← Retour</a>
+
+  <div id="track-main">
+    <!-- Rempli en JS -->
+  </div>
+
+  <div class="card" id="stats-card" style="display:none;">
+    <h2>📈 Vos stats sur ce titre</h2>
+    <div class="stat-row"><span>Écoutes totales</span><span id="stat-count">0</span></div>
+    <div class="stat-row"><span>Première écoute</span><span id="stat-first">-</span></div>
+    <div class="stat-row"><span>Dernière écoute</span><span id="stat-last">-</span></div>
+  </div>
+</div>
+
+<script>
+  // --- CONFIG SUPABASE (mêmes clés que le reste du site) ---
+  const SUPABASE_URL = 'https://kvrwymmsgwstvyqmscuy.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2cnd5bW1zZ3dzdHZ5cW1zY3V5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3NjAxODksImV4cCI6MjA3OTMzNjE4OX0.XNJOD5MzOaM8u_tRuvXZvx2Q_mHUTbk-mAbUFnoU3H4';
+  const { createClient } = supabase;
+  const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  const spotifyToken = localStorage.getItem('spotify_token');
+
+  const params = new URLSearchParams(window.location.search);
+  const trackId = params.get('track_id'); // ID Spotify du titre
+
+  if (!trackId || !spotifyToken) {
+    document.getElementById('track-main').innerHTML =
+      "<p>Impossible de charger ce titre. Vérifiez que vous êtes connecté.</p>";
+  } else {
+    loadTrack();
+    loadTrackStats();
+  }
+
+  async function loadTrack() {
+    const res = await fetch(`https://api.spotify.com/v1/tracks/${encodeURIComponent(trackId)}`, {
+      headers: { Authorization: `Bearer ${spotifyToken}` }
+    });
+    const t = await res.json();
+
+    const name = t.name;
+    const artists = t.artists.map(a => a.name).join(', ');
+    const album = t.album?.name || '';
+    const cover = t.album?.images?.[0]?.url || '';
+    const durationMs = t.duration_ms || 0;
+    const preview = t.preview_url; // parfois null
+
+    const mins = Math.floor(durationMs / 60000);
+    const secs = Math.floor((durationMs % 60000) / 1000).toString().padStart(2,'0');
+
+    const mainDiv = document.getElementById('track-main');
+    mainDiv.innerHTML = `
+      <div class="track-header">
+        <img src="${cover}" alt="${name}" class="cover">
+        <div class="meta">
+          <h1>${name}</h1>
+          <div class="artist">${artists}</div>
+          <div class="album">Album : ${album}</div>
+          <div class="duration">Durée : ${mins}:${secs}</div>
+          <button class="btn-spotify" onclick="playTrack()">▶ Lire sur Spotify</button>
+          ${preview ? `<audio controls src="${preview}"></audio>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  async function loadTrackStats() {
+    const myId = localStorage.getItem('my_spotify_id');
+    if (!myId) return;
+
+    // On suppose que listening_history.tracks.spotify_id contient l'id Spotify
+    const { data, error } = await sb
+      .from('listening_history')
+      .select('played_at')
+      .eq('user_id', myId)
+      .eq('tracks.spotify_id', trackId)
+      .order('played_at', { ascending: true });
+
+    if (error || !data || !data.length) return;
+
+    const count = data.length;
+    const first = new Date(data[0].played_at);
+    const last = new Date(data[data.length - 1].played_at);
+
+    document.getElementById('stat-count').innerText = count;
+    document.getElementById('stat-first').innerText = first.toLocaleString('fr-FR');
+    document.getElementById('stat-last').innerText = last.toLocaleString('fr-FR');
+    document.getElementById('stats-card').style.display = 'block';
+  }
+
+  async function playTrack() {
+    if (!spotifyToken) return alert("Reconnecte-toi d'abord.");
+    // Ajoute le titre à la file d'attente de l'appareil actif
+    const res = await fetch(`https://api.spotify.com/v1/me/player/queue?uri=spotify:track:${encodeURIComponent(trackId)}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${spotifyToken}` }
+    });
+    if (res.status === 204) {
+      alert("Titre ajouté à la file d'attente Spotify de ton appareil actif.");
+    } else if (res.status === 404) {
+      alert("Aucun appareil actif détecté. Lance Spotify sur ton téléphone/PC.");
+    } else if (res.status === 401) {
+      alert("Session expirée, reconnecte-toi.");
+    } else {
+      alert("Impossible de lancer la lecture (code " + res.status + ").");
+    }
+  }
+</script>
+</body>
+</html>
