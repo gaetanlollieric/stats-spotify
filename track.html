@@ -285,7 +285,7 @@
   // --- Titres similaires (API recommandations) ---
   async function loadSimilarTracks() {
     const res = await fetch(
-      `https://api.spotify.com/v1/recommendations?seed_tracks=${encodeURIComponent(trackId)}&limit=10`,
+      `https://api.spotify.com/v1/recommendations?seed_tracks=${encodeURIComponent(trackId)}&limit=10&market=FR`,
       { headers: { Authorization: `Bearer ${spotifyToken}` } }
     );
     if (!res.ok) {
