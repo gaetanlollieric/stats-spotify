@@ -725,20 +725,21 @@
         if (!sortedTracks.length) {
             tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding:20px;">Rien trouvé...</td></tr>`;
         } else {
-            sortedTracks.forEach(([key, c], index) => {
-                const [name, artist] = key.split('||');
-                const trackId = trackInfos[key]; // ID Spotify que tu as déjà
-    
-                // On construit la ligne avec un onclick vers track.html
+            sortedTracks.forEach(([key, c]) => {
+                const [name, artist] = key.split('###');
+                const trackId = trackInfos[key];
+        
                 tbody.innerHTML += `
-                    <tr ${trackId ? `onclick="window.location.href='track.html?track_id=${encodeURIComponent(trackId)}'"` : ''} style="cursor:${trackId ? 'pointer' : 'default'};">
+                    <tr ${trackId ? `onclick="window.location.href='track.html?track_id=${encodeURIComponent(trackId)}'"` : ''} 
+                        style="cursor:${trackId ? 'pointer' : 'default'};">
                         <td><strong>${name}</strong></td>
-                        <td>${artist}</td>
+                        <td>${artist || 'Inconnu'}</td>
                         <td><span class="count-badge">${c}</span></td>
                     </tr>
                 `;
             });
         }
+
 
 
         setupPlayButton();
@@ -1074,6 +1075,7 @@
     </script>
 </body>
 </html>
+
 
 
 
