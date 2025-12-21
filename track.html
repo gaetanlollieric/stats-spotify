@@ -264,11 +264,13 @@
   // --- Lecture Spotify (ajout à la file d'attente) ---
   async function playTrack() {
     if (!spotifyToken) return alert("Reconnecte-toi d'abord.");
+  
     const res = await fetch(
       `https://api.spotify.com/v1/me/player/queue?uri=spotify:track:${encodeURIComponent(trackId)}`,
       { method:'POST', headers:{ Authorization:`Bearer ${spotifyToken}` } }
     );
-    if (res.status === 204) {
+  
+    if (res.status === 204 || res.status === 200) {
       alert("Titre ajouté à la file d'attente de ton appareil Spotify actif.");
     } else if (res.status === 404) {
       alert("Aucun appareil actif détecté. Lance Spotify sur ton téléphone/PC.");
@@ -278,6 +280,7 @@
       alert("Impossible d'ajouter à la file (code " + res.status + ").");
     }
   }
+
 
   // --- Titres similaires (API recommandations) ---
   async function loadSimilarTracks() {
