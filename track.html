@@ -234,12 +234,13 @@
       .eq('user_id', mySpotifyId);
 
     // 2. Plays pour ce titre
-    const { data, count: trackCount, error } = await sb
-      .from('listening_history')
-      .select('played_at', { count: 'exact' })
-      .eq('user_id', mySpotifyId)
-      .eq('tracks.spotify_id', trackId)
-      .order('played_at', { ascending: true });
+  const { data, count: trackCount, error } = await sb
+    .from('listening_history')
+    .select('played_at, tracks!inner(spotify_id)', { count: 'exact' })
+    .eq('user_id', mySpotifyId)
+    .eq('tracks.spotify_id', trackId)
+    .order('played_at', { ascending: true });
+
 
     if (error || !data || !data.length) return;
 
