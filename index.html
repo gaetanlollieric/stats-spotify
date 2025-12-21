@@ -456,9 +456,40 @@
     async function generateCodeChallenge(v){const e=new TextEncoder();const d=e.encode(v);const dig=await window.crypto.subtle.digest('SHA-256',d);return btoa(String.fromCharCode(...new Uint8Array(dig))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/, '');}
 
     window.addEventListener('load', async () => {
-        const params = new URLSearchParams(window.location.search);
-        const code = params.get("code");
-        if (code) { await handleSpotifyCallback(code); }
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
+    
+      if (code) {
+        await handleSpotifyCallback(code);
+      } else {
+        // AUTO LOGIN SI TOKEN DÉJÀ PRÉSENT
+        const savedToken = localStorage.getItem('spotifytoken');
+        const savedTokenTime = localStorage.getItem('spotifytokentime');
+        const savedUserId = localStorage.getItem('myspotifyid');
+    
+        if (savedToken && savedTokenTime && savedUserId) {
+          const age = Date.now() - parseInt(savedTokenTime, 10);
+          const ONE_HOUR = 3600000;
+    
+          if (age < ONE_HOUR) {
+            // On considère le token comme encore valide
+            currentToken = savedToken;
+            currentUserId = savedUserId;
+            displayedUserId = savedUserId;
+    
+            document.getElementById('login-section').classList.add('hidden');
+            document.getElementById('dashboard').classList.remove('hidden');
+    
+            document.getElementById('user-display-name').innerText =
+              localStorage.getItem('displayname') || 'Toi';
+    
+            await loadUsersList();
+            await loadSupabaseStats(currentUserId);
+            await loadSpotifyApiStats(currentToken, 'short_term');
+            return;
+          }
+        }
+      }
         
         // Init sélecteur année heatmap
         const yearSel = document.getElementById('heatmap-year-select');
@@ -1097,3 +1128,4 @@
     </script>
 </body>
 </html>
+
