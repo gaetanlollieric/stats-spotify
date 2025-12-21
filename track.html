@@ -43,6 +43,7 @@
       object-fit:cover;
       background:#333;
       box-shadow:0 8px 24px rgba(0,0,0,0.5);
+      flex-shrink:0;
     }
     .meta h1{
       margin:0 0 8px;
@@ -56,10 +57,10 @@
       color:var(--text-secondary);
       font-size:0.9rem;
     }
-    .meta .duration{
+    .meta .info-line{
       color:var(--text-secondary);
       font-size:0.9rem;
-      margin-top:8px;
+      margin-top:4px;
     }
     .btn-spotify{
       margin-top:16px;
@@ -88,56 +89,117 @@
       font-size:0.95rem;
     }
     audio{width:100%;margin-top:10px;}
+
+    /* Titres similaires */
+    .similar-track {
+      display:flex;
+      align-items:center;
+      gap:12px;
+      padding:6px 0;
+    }
+    .similar-cover {
+      width:46px;
+      height:46px;
+      border-radius:6px;
+      object-fit:cover;
+      background:#333;
+      flex-shrink:0;
+    }
+    .similar-meta {
+      flex:1;
+      overflow:hidden;
+    }
+    .similar-title {
+      font-size:0.9rem;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .similar-artist {
+      font-size:0.8rem;
+      color:var(--text-secondary);
+    }
+    .similar-btn {
+      border:none;
+      background:var(--spotify-green);
+      color:black;
+      border-radius:999px;
+      padding:4px 10px;
+      font-size:0.75rem;
+      cursor:pointer;
+      margin-left:4px;
+    }
+    .similar-btn:hover { filter:brightness(1.08); }
   </style>
 </head>
 <body>
 <div class="container">
   <a href="index.html" class="back-btn">← Retour</a>
 
-  <div id="track-main">
-    <!-- Rempli en JS -->
-  </div>
+  <div id="track-main"></div>
 
   <div class="card" id="stats-card" style="display:none;">
     <h2>📈 Vos stats sur ce titre</h2>
     <div class="stat-row"><span>Écoutes totales</span><span id="stat-count">0</span></div>
     <div class="stat-row"><span>Première écoute</span><span id="stat-first">-</span></div>
     <div class="stat-row"><span>Dernière écoute</span><span id="stat-last">-</span></div>
+    <!-- la ligne du % sera ajoutée en JS -->
+  </div>
+
+  <div class="card" id="similar-card" style="display:none; margin-top:20px;">
+    <h2>🎧 Titres similaires</h2>
+    <div id="similar-list"></div>
   </div>
 </div>
 
 <script>
-  // --- CONFIG SUPABASE (mêmes clés que le reste du site) ---
+  // --- CONFIG SUPABASE (identique aux autres pages) ---
   const SUPABASE_URL = 'https://kvrwymmsgwstvyqmscuy.supabase.co';
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2cnd5bW1zZ3dzdHZ5cW1zY3V5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3NjAxODksImV4cCI6MjA3OTMzNjE4OX0.XNJOD5MzOaM8u_tRuvXZvx2Q_mHUTbk-mAbUFnoU3H4';
   const { createClient } = supabase;
   const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
   const spotifyToken = localStorage.getItem('spotify_token');
+  const mySpotifyId = localStorage.getItem('my_spotify_id');
 
   const params = new URLSearchParams(window.location.search);
   const trackId = params.get('track_id'); // ID Spotify du titre
 
-  if (!trackId || !spotifyToken) {
+  if (!spotifyToken || !mySpotifyId || !trackId) {
     document.getElementById('track-main').innerHTML =
-      "<p>Impossible de charger ce titre. Vérifiez que vous êtes connecté.</p>";
+      "<p>Impossible de charger ce titre. Retour au dashboard pour se reconnecter.</p>";
   } else {
     loadTrack();
     loadTrackStats();
+    loadSimilarTracks();
   }
 
+  async function spotifyFetch(url) {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${spotifyToken}` } });
+    if (!res.ok) {
+      console.warn('Erreur Spotify', res.status, url);
+      return null;
+    }
+    return res.json();
+  }
+
+  // --- Infos Spotify du titre ---
   async function loadTrack() {
-    const res = await fetch(`https://api.spotify.com/v1/tracks/${encodeURIComponent(trackId)}`, {
-      headers: { Authorization: `Bearer ${spotifyToken}` }
-    });
-    const t = await res.json();
+    const t = await spotifyFetch(`https://api.spotify.com/v1/tracks/${encodeURIComponent(trackId)}`);
+    if (!t) {
+      document.getElementById('track-main').innerHTML = "<p>Titre introuvable sur Spotify.</p>";
+      return;
+    }
 
     const name = t.name;
     const artists = t.artists.map(a => a.name).join(', ');
     const album = t.album?.name || '';
     const cover = t.album?.images?.[0]?.url || '';
     const durationMs = t.duration_ms || 0;
-    const preview = t.preview_url; // parfois null
+    const preview = t.preview_url;
+    const explicit = t.explicit;
+    const popularity = t.popularity;
+    const marketsCount = (t.available_markets || []).length;
 
     const mins = Math.floor(durationMs / 60000);
     const secs = Math.floor((durationMs % 60000) / 1000).toString().padStart(2,'0');
@@ -150,53 +212,122 @@
           <h1>${name}</h1>
           <div class="artist">${artists}</div>
           <div class="album">Album : ${album}</div>
-          <div class="duration">Durée : ${mins}:${secs}</div>
+          <div class="info-line">Durée : ${mins}:${secs}</div>
+          <div class="info-line">Popularité : ${popularity}/100</div>
+          <div class="info-line">Marchés disponibles : ${marketsCount}</div>
+          <div class="info-line">Explicit : ${explicit ? 'Oui' : 'Non'}</div>
           <button class="btn-spotify" onclick="playTrack()">▶ Lire sur Spotify</button>
-          ${preview ? `<audio controls src="${preview}"></audio>` : ''}
+          ${preview
+            ? `<audio controls src="${preview}"></audio>`
+            : '<div style="margin-top:10px;color:#888;font-size:0.85rem;">Pas de preview disponible</div>'}
         </div>
       </div>
     `;
   }
 
+  // --- Stats perso + % d'écoutes ---
   async function loadTrackStats() {
-    const myId = localStorage.getItem('my_spotify_id');
-    if (!myId) return;
-
-    // On suppose que listening_history.tracks.spotify_id contient l'id Spotify
-    const { data, error } = await sb
+    // 1. Tous tes plays
+    const { count: totalCount } = await sb
       .from('listening_history')
-      .select('played_at')
-      .eq('user_id', myId)
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', mySpotifyId);
+
+    // 2. Plays pour ce titre
+    const { data, count: trackCount, error } = await sb
+      .from('listening_history')
+      .select('played_at', { count: 'exact' })
+      .eq('user_id', mySpotifyId)
       .eq('tracks.spotify_id', trackId)
       .order('played_at', { ascending: true });
 
     if (error || !data || !data.length) return;
 
-    const count = data.length;
     const first = new Date(data[0].played_at);
     const last = new Date(data[data.length - 1].played_at);
+    const percent = totalCount ? ((trackCount / totalCount) * 100).toFixed(2) : 0;
 
-    document.getElementById('stat-count').innerText = count;
+    document.getElementById('stat-count').innerText = `${trackCount} écoutes`;
     document.getElementById('stat-first').innerText = first.toLocaleString('fr-FR');
     document.getElementById('stat-last').innerText = last.toLocaleString('fr-FR');
-    document.getElementById('stats-card').style.display = 'block';
+
+    const statsCard = document.getElementById('stats-card');
+    statsCard.style.display = 'block';
+
+    const extra = document.createElement('div');
+    extra.className = 'stat-row';
+    extra.innerHTML = `<span>Part de tes écoutes</span><span>${percent} %</span>`;
+    statsCard.appendChild(extra);
   }
 
+  // --- Lecture Spotify (ajout à la file d'attente) ---
   async function playTrack() {
     if (!spotifyToken) return alert("Reconnecte-toi d'abord.");
-    // Ajoute le titre à la file d'attente de l'appareil actif
-    const res = await fetch(`https://api.spotify.com/v1/me/player/queue?uri=spotify:track:${encodeURIComponent(trackId)}`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${spotifyToken}` }
-    });
+    const res = await fetch(
+      `https://api.spotify.com/v1/me/player/queue?uri=spotify:track:${encodeURIComponent(trackId)}`,
+      { method:'POST', headers:{ Authorization:`Bearer ${spotifyToken}` } }
+    );
     if (res.status === 204) {
-      alert("Titre ajouté à la file d'attente Spotify de ton appareil actif.");
+      alert("Titre ajouté à la file d'attente de ton appareil Spotify actif.");
     } else if (res.status === 404) {
       alert("Aucun appareil actif détecté. Lance Spotify sur ton téléphone/PC.");
     } else if (res.status === 401) {
       alert("Session expirée, reconnecte-toi.");
     } else {
-      alert("Impossible de lancer la lecture (code " + res.status + ").");
+      alert("Impossible d'ajouter à la file (code " + res.status + ").");
+    }
+  }
+
+  // --- Titres similaires (API recommandations) ---
+  async function loadSimilarTracks() {
+    const res = await fetch(
+      `https://api.spotify.com/v1/recommendations?seed_tracks=${encodeURIComponent(trackId)}&limit=10`,
+      { headers: { Authorization: `Bearer ${spotifyToken}` } }
+    );
+    if (!res.ok) {
+      console.warn('Pas de recommandations pour ce titre', res.status);
+      return;
+    }
+    const data = await res.json();
+    const tracks = data.tracks || [];
+    if (!tracks.length) return;
+
+    const listDiv = document.getElementById('similar-list');
+    listDiv.innerHTML = tracks.map(t => {
+      const cover = t.album?.images?.[2]?.url || t.album?.images?.[0]?.url || '';
+      const artists = t.artists.map(a => a.name).join(', ');
+      return `
+        <div class="similar-track">
+          <img src="${cover}" class="similar-cover" alt="${t.name}">
+          <div class="similar-meta">
+            <div class="similar-title">${t.name}</div>
+            <div class="similar-artist">${artists}</div>
+          </div>
+          <button class="similar-btn" onclick="openTrack('${t.id}')">Détail</button>
+          <button class="similar-btn" onclick="queueTrack('${t.uri}')">+ File</button>
+        </div>
+      `;
+    }).join('');
+
+    document.getElementById('similar-card').style.display = 'block';
+  }
+
+  function openTrack(id) {
+    window.location.href = `track.html?track_id=${encodeURIComponent(id)}`;
+  }
+
+  async function queueTrack(uri) {
+    if (!spotifyToken) return alert("Session expirée, reconnecte-toi.");
+    const res = await fetch(
+      `https://api.spotify.com/v1/me/player/queue?uri=${encodeURIComponent(uri)}`,
+      { method:'POST', headers:{ Authorization:`Bearer ${spotifyToken}` } }
+    );
+    if (res.status === 204) {
+      alert("Ajouté à ta file d'attente Spotify.");
+    } else if (res.status === 404) {
+      alert("Aucun appareil actif détecté. Lance Spotify sur un appareil.");
+    } else {
+      alert("Impossible d'ajouter à la file (code " + res.status + ").");
     }
   }
 </script>
