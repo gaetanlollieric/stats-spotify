@@ -226,6 +226,44 @@
         .hidden {
             display: none !important;
         }
+
+        @media (max-width: 768px) {
+          body {
+            padding: 10px;
+          }
+        
+          .container {
+            max-width: 100%;
+          }
+        
+          h1, h2 {
+            font-size: 1.4rem;
+          }
+        
+          .stats-grid {
+            grid-template-columns: 1fr;
+            gap: 12px;
+          }
+        
+          .card {
+            padding: 16px;
+          }
+        
+          .chart-wrapper {
+            height: 260px;
+          }
+        
+          .track-table th,
+          .track-table td {
+            padding: 8px;
+            font-size: 0.85rem;
+          }
+        
+          .controls {
+            flex-wrap: wrap;
+          }
+        }
+
     </style>
 </head>
 
@@ -684,11 +722,24 @@
 
         const tbody = document.getElementById('db-top-tracks');
         tbody.innerHTML = '';
-        if (!sortedTracks.length) tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:20px;">Rien trouvé...</td></tr>';
-        else sortedTracks.forEach(([key, c]) => {
-            const [name, artist] = key.split('###');
-            tbody.innerHTML += `<tr><td><strong>${name}</strong></td><td>${artist}</td><td><span class="count-badge">${c}</span></td></tr>`;
-        });
+        if (!sortedTracks.length) {
+            tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding:20px;">Rien trouvé...</td></tr>`;
+        } else {
+            sortedTracks.forEach(([key, c], index) => {
+                const [name, artist] = key.split('||');
+                const trackId = trackInfos[key]; // ID Spotify que tu as déjà
+    
+                // On construit la ligne avec un onclick vers track.html
+                tbody.innerHTML += `
+                    <tr ${trackId ? `onclick="window.location.href='track.html?track_id=${encodeURIComponent(trackId)}'"` : ''} style="cursor:${trackId ? 'pointer' : 'default'};">
+                        <td><strong>${name}</strong></td>
+                        <td>${artist}</td>
+                        <td><span class="count-badge">${c}</span></td>
+                    </tr>
+                `;
+            });
+        }
+
 
         setupPlayButton();
         renderLoyalty(data);     // Affiche la Fidélité
@@ -1023,6 +1074,7 @@
     </script>
 </body>
 </html>
+
 
 
 
