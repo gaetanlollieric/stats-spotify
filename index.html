@@ -462,7 +462,7 @@
       if (code) {
         await handleSpotifyCallback(code);
       } else {
-        // AUTO LOGIN SI TOKEN DÉJÀ PRÉSENT
+        // 🚀 AUTO-SESSION QUAND ON REVIENT DE LIBRARY / ARTIST
         const savedToken = localStorage.getItem('spotifytoken');
         const savedTokenTime = localStorage.getItem('spotifytokentime');
         const savedUserId = localStorage.getItem('myspotifyid');
@@ -472,7 +472,7 @@
           const ONE_HOUR = 3600000;
     
           if (age < ONE_HOUR) {
-            // On considère le token comme encore valide
+            // On considère la session comme active
             currentToken = savedToken;
             currentUserId = savedUserId;
             displayedUserId = savedUserId;
@@ -480,6 +480,7 @@
             document.getElementById('login-section').classList.add('hidden');
             document.getElementById('dashboard').classList.remove('hidden');
     
+            // Optionnel : récupérer le nom stocké au moment du callback
             document.getElementById('user-display-name').innerText =
               localStorage.getItem('displayname') || 'Toi';
     
@@ -539,6 +540,8 @@
 
             const resProfile = await fetch("https://api.spotify.com/v1/me", { headers: { Authorization: `Bearer ${currentToken}` } });
             const profile = await resProfile.json();
+            localStorage.setItem('displayname', profile.display_name);
+
 
             // Après avoir récupéré 'response.access_token' et 'profile'
             localStorage.setItem('spotify_token', response.access_token);
@@ -1128,4 +1131,5 @@
     </script>
 </body>
 </html>
+
 
