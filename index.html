@@ -468,14 +468,28 @@
             renderHeatmap(allHistoryData, currentHeatmapYear);
         };
     });
-
+        
     document.getElementById('login-btn').addEventListener('click', async () => {
+    
+        // 🔥 IMPORTANT : forcer Spotify à redemander les nouveaux scopes (à faire UNE FOIS)
+        localStorage.removeItem('spotify_token');
+    
         const v = generateRandomString(128);
         const c = await generateCodeChallenge(v);
         localStorage.setItem("verifier", v);
-        const p = new URLSearchParams({ client_id: clientId, response_type: "code", redirect_uri: redirectUri, scope: scopes, code_challenge_method: "S256", code_challenge: c });
+    
+        const p = new URLSearchParams({
+            client_id: clientId,
+            response_type: "code",
+            redirect_uri: redirectUri,
+            scope: scopes,
+            code_challenge_method: "S256",
+            code_challenge: c
+        });
+    
         document.location = `https://accounts.spotify.com/authorize?${p.toString()}&show_dialog=true`;
     });
+
 
     async function handleSpotifyCallback(code) {
         const verifier = localStorage.getItem("verifier");
@@ -1083,6 +1097,7 @@
     </script>
 </body>
 </html>
+
 
 
 
