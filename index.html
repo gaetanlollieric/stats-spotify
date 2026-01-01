@@ -370,8 +370,8 @@
                 <h2>Historique Annuel</h2>
                 <!-- Sélecteur d'année -->
                 <select id="heatmap-year-select" class="filter-btn" style="background:#181818; color:white;">
+                    <option value="2026" selected>2026</option> <!-- Sélectionné par défaut -->
                     <option value="2025">2025</option>
-                    <option value="2024">2024</option>
                 </select>
             </div>
             <div class="heatmap-container">
@@ -498,6 +498,16 @@
             
         // Init sélecteur année heatmap
         const yearSel = document.getElementById('heatmap-year-select');
+        if (yearSel) {
+            yearSel.value = currentHeatmapYear; // Force le sélecteur sur l'année en cours
+            yearSel.onchange = (e) => {
+                currentHeatmapYear = parseInt(e.target.value);
+                // On relance le rendu avec les données déjà chargées
+                if(allHistoryData) {
+                    renderHeatmap(allHistoryData, currentHeatmapYear);
+                }
+            };
+        }
         yearSel.value = currentHeatmapYear;
         yearSel.onchange = (e) => {
             currentHeatmapYear = parseInt(e.target.value);
@@ -807,35 +817,39 @@
         renderLoyalty(data);     // Affiche la Fidélité
     }
 
-    // --- HEATMAP GITHUB STYLE ---
-        // --- HEATMAP GITHUB STYLE (CORRIGÉE) ---
+        // --- HEATMAP GITHUB STYLE (VERSION FINALE 2026) ---
     function renderHeatmap(data, year) {
         const grid = document.getElementById('heatmap-grid');
+        if (!grid) return;
         grid.innerHTML = '';
 
         const counts = {};
         let maxCount = 0;
-        
-        // 1. Comptage des écoutes
+
+        // 1. Filtrer les données pour l'année demandée UNIQUEMENT
         data.forEach(d => {
-            if (d.played_at.getFullYear() === year) {
-                const dateKey = getLocalDateString(d.played_at);
+            // On sécurise la date
+            const dateObj = new Date(d.played_at);
+            if (dateObj.getFullYear() === year) {
+                const dateKey = getLocalDateString(dateObj);
                 counts[dateKey] = (counts[dateKey] || 0) + 1;
                 if (counts[dateKey] > maxCount) maxCount = counts[dateKey];
             }
         });
 
-        // 2. Initialisation des dates
-        const startDate = new Date(year, 0, 1); // 1er Janvier
-        const endDate = new Date(year, 11, 31); // 31 Décembre
-        
-        // Gestion du jour de départ pour l'alignement (Lundi = 0 dans la grille CSS, mais 1 dans getDay())
-        // getDay() : 0=Dim, 1=Lun, 2=Mar, 3=Mer...
-        // On veut : 0=Lun, 1=Mar, 2=Mer... 6=Dim
+        // 2. Définir le début et la fin de l'année sélectionnée
+        const startDate = new Date(year, 0, 1); // 1er Janvier de l'année 'year'
+        // Astuce : on définit la fin comme le 1er Janvier de l'année suivante, et on boucle TANT QUE <
+        const nextYearDate = new Date(year + 1, 0, 1); 
+
+        // 3. Gestion de l'alignement (Lundi = 1ère colonne)
+        // getDay(): 0=Dim, 1=Lun ... 6=Sam
         let startDay = startDate.getDay(); 
+        // On veut que Lundi (1) soit 0 décalage. 
+        // Si Dimanche (0) -> 6 décalages (pour le mettre à la fin de la ligne précédente visuellement)
         let dayOffset = startDay === 0 ? 6 : startDay - 1; 
 
-        // 3. Ajout des cases vides pour aligner le 1er jour
+        // Ajout des cases vides
         for(let i=0; i < dayOffset; i++) {
             const empty = document.createElement('div');
             empty.className = 'heatmap-cell level-0'; 
@@ -843,18 +857,16 @@
             grid.appendChild(empty);
         }
 
-        // 4. Boucle jour par jour robuste
+        // 4. Boucle jour par jour
         let current = new Date(startDate);
-        
-        // On boucle tant que l'année du curseur est toujours l'année demandée
-        // (C'est plus sûr que de comparer des timestamps)
-        while (current.getFullYear() === year) {
+
+        while (current < nextYearDate) {
             const dateKey = getLocalDateString(current);
             const count = counts[dateKey] || 0;
             
             const cell = document.createElement('div');
             
-            // Calcul couleur
+            // Calcul couleur (Vert plus ou moins foncé)
             let level = 0;
             if (count > 0) {
                 const ratio = count / (maxCount || 1); 
@@ -865,32 +877,31 @@
             }
             
             cell.className = `heatmap-cell level-${level}`;
-            cell.title = `${dateKey}: ${count} écoutes`;
+            cell.title = `${dateKey}: ${count} écoutes`; // Tooltip
             
-            // Interaction au clic (Filtre date)
-            // On capture la valeur de dateKey dans une variable locale pour le clic
-            const clickedDate = dateKey; 
-            cell.onclick = () => {
-                const dateInput = document.getElementById('date-picker');
-                if(dateInput) {
-                    dateInput.value = clickedDate;
-                    currentPeriod = 'specific_date';
-                    currentSpecificValue = clickedDate;
-                    resetSpecificInputs();
-                    dateInput.style.borderColor = 'var(--spotify-green)';
-                    updateDashboard();
-                    document.getElementById('dashboard').scrollIntoView({ behavior: 'smooth' });
-                }
-            };
+            // Clic pour filtrer
+            // On capture la valeur dans une closure pour que le clic marche
+            (function(clickedDate) {
+                cell.onclick = () => {
+                    const dateInput = document.getElementById('date-picker');
+                    if(dateInput) {
+                        dateInput.value = clickedDate;
+                        currentPeriod = 'specific_date';
+                        currentSpecificValue = clickedDate;
+                        resetSpecificInputs();
+                        dateInput.style.borderColor = 'var(--spotify-green)';
+                        updateDashboard();
+                    }
+                };
+            })(dateKey);
 
             grid.appendChild(cell);
             
-            // Passage au jour suivant (Méthode UTC pour éviter les bugs d'heure d'hiver/été)
+            // Jour suivant
             current.setDate(current.getDate() + 1);
         }
     }
-
-
+        
     // --- CHART MANAGER ---
     function switchChartMode(mode) {
         currentChartMode = mode;
@@ -1137,6 +1148,7 @@
     </script>
 </body>
 </html>
+
 
 
 
