@@ -806,46 +806,54 @@
         setupPlayButton();
         renderLoyalty(data);     // Affiche la Fidélité
     }
-
-    // --- HEATMAP GITHUB STYLE ---
+        
+    // --- HEATMAP GITHUB STYLE (CORRECTION 31 DÉCEMBRE) ---
     function renderHeatmap(data, year) {
         const grid = document.getElementById('heatmap-grid');
+        if (!grid) return;
         grid.innerHTML = '';
 
         const counts = {};
         let maxCount = 0;
-        
+
+        // 1. Filtrer et compter
         data.forEach(d => {
             if (d.played_at.getFullYear() === year) {
-                // CORRECTION ICI : Utiliser l'heure locale pour remplir la heatmap
                 const dateKey = getLocalDateString(d.played_at);
-                
                 counts[dateKey] = (counts[dateKey] || 0) + 1;
                 if (counts[dateKey] > maxCount) maxCount = counts[dateKey];
             }
         });
 
-        // Le reste de la fonction ne change pas...
         const startDate = new Date(year, 0, 1);
-        const endDate = new Date(year, 11, 31);
-        const startDay = startDate.getDay(); 
-        const dayOffset = startDay === 0 ? 6 : startDay - 1; 
+        
+        // Calcul du nombre de jours exact dans l'année (365 ou 366)
+        const isLeap = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+        const daysInYear = isLeap ? 366 : 365;
 
+        // Alignement Lundi (0 cases vides si lundi, 6 si dimanche)
+        let startDay = startDate.getDay(); 
+        let dayOffset = startDay === 0 ? 6 : startDay - 1; 
+
+        // Cases vides début
         for(let i=0; i < dayOffset; i++) {
             const empty = document.createElement('div');
-            empty.className = 'heatmap-cell level-0'; empty.style.opacity = '0';
+            empty.className = 'heatmap-cell level-0'; 
+            empty.style.opacity = '0'; 
             grid.appendChild(empty);
         }
 
+        // Boucle sur le nombre exact de jours
         let current = new Date(startDate);
-        // On force l'heure à  midi pour éviter les sauts d'heure d'été/hiver lors de l'incrémentation
-        current.setHours(12, 0, 0, 0); 
-
-        while (current <= endDate) {
-            // CORRECTION ICI AUSSI
-            const dateKey = getLocalDateString(current);
+        
+        for (let i = 0; i < daysInYear; i++) {
+            // On recrée la date à chaque itération pour éviter les dérives
+            // On ajoute 'i' jours au 1er janvier
+            const dateCursor = new Date(year, 0, 1 + i);
             
+            const dateKey = getLocalDateString(dateCursor);
             const count = counts[dateKey] || 0;
+            
             const cell = document.createElement('div');
             
             let level = 0;
@@ -858,36 +866,26 @@
             }
             
             cell.className = `heatmap-cell level-${level}`;
-            cell.title = `${dateKey}: ${count} écoutes`; // Affichage au survol
+            cell.title = `${dateKey}: ${count} écoutes`;
             
-            cell.onclick = () => {
-                const dateInput = document.getElementById('date-picker');
-                if(dateInput) {
-                    // 1. On remplit le champ date visuellement
-                    dateInput.value = dateKey;
-                    
-                    // 2. On met à  jour les variables globales pour le filtre
-                    currentPeriod = 'specific_date';
-                    currentSpecificValue = dateKey;
-                    
-                    // 3. On active visuellement le champ date (bordure verte)
-                    resetSpecificInputs(); // Nettoie les autres boutons actifs
-                    dateInput.style.borderColor = 'var(--spotify-green)';
-
-                    // 4. On lance la mise à  jour du dashboard
-                    updateDashboard();
-                    
-                    // (Optionnel) On scrolle vers le haut pour voir le résultat
-                    document.getElementById('dashboard').scrollIntoView({ behavior: 'smooth' });
-                }
-            };
+            (function(clickedDate) {
+                cell.onclick = () => {
+                    const dateInput = document.getElementById('date-picker');
+                    if(dateInput) {
+                        dateInput.value = clickedDate;
+                        currentPeriod = 'specific_date';
+                        currentSpecificValue = clickedDate;
+                        resetSpecificInputs();
+                        dateInput.style.borderColor = '#1ED760';
+                        updateDashboard();
+                    }
+                };
+            })(dateKey);
 
             grid.appendChild(cell);
-            
-            // Ajout sà»r d'un jour
-            current.setDate(current.getDate() + 1);
         }
     }
+
 
 
     // --- CHART MANAGER ---
@@ -1136,6 +1134,7 @@
     </script>
 </body>
 </html>
+
 
 
 
