@@ -3,428 +3,436 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Générateur de Recommandations - Spotify Stats</title>
+    <title>Spotify Discover - Recommandations</title>
     <style>
         :root {
-            --spotify-green: #1DB954;
-            --spotify-white: #FFFFFF;
-            --bg-dark: #121212;
-            --card-bg: #181818;
-            --card-hover: #282828;
-            --text-subdued: #b3b3b3;
-            --border-radius: 8px;
+            --green: #1DB954;
+            --black: #121212;
+            --gray: #181818;
+            --light-gray: #282828;
+            --text: #FFFFFF;
+            --subtext: #B3B3B3;
         }
 
         body {
-            font-family: 'Circular', -apple-system, BlinkMacSystemFont, sans-serif;
-            background-color: var(--bg-dark);
-            color: var(--spotify-white);
+            font-family: 'Circular', sans-serif;
+            background-color: var(--black);
+            color: var(--text);
             margin: 0;
             padding: 20px;
-            min-height: 100vh;
         }
 
-        .container { max-width: 1000px; margin: 0 auto; }
-        h1, h2, h3 { color: var(--spotify-white); margin-bottom: 0.5em; }
-        h1 span { color: var(--spotify-green); }
+        .container { max-width: 900px; margin: 0 auto; }
 
-        /* Navigation */
-        .nav-bar { margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid #333; }
-        .btn-back {
-            text-decoration: none; color: var(--text-subdued); font-weight: bold;
-            display: inline-flex; align-items: center; transition: color 0.2s;
+        /* HEADER & NAVIGATION */
+        .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 30px; }
+        .back-btn { color: var(--subtext); text-decoration: none; font-weight: bold; }
+        .back-btn:hover { color: var(--green); }
+
+        /* TABS (ONGLETS) */
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; justify-content: center; }
+        .tab-btn {
+            background: transparent; border: 2px solid var(--light-gray); color: var(--subtext);
+            padding: 10px 25px; border-radius: 30px; cursor: pointer; font-weight: bold; font-size: 1rem;
+            transition: all 0.2s;
         }
-        .btn-back:hover { color: var(--spotify-white); }
+        .tab-btn.active { border-color: var(--green); color: var(--text); background: rgba(29, 185, 84, 0.1); }
+        .tab-btn:hover { border-color: var(--text); }
 
-        /* Layout Grid */
-        .layout { display: grid; grid-template-columns: 350px 1fr; gap: 30px; }
-        @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } }
+        /* SECTIONS DE RECHERCHE */
+        .search-section {
+            background: var(--gray); padding: 30px; border-radius: 10px; text-align: center;
+            display: none; /* Caché par défaut */
+        }
+        .search-section.active { display: block; animation: fadeIn 0.3s; }
 
-        /* Controls Section */
-        .controls { background: var(--card-bg); padding: 20px; border-radius: var(--border-radius); height: fit-content; }
-        .control-group { margin-bottom: 25px; }
-        label { display: block; margin-bottom: 8px; font-weight: bold; color: var(--spotify-green); }
-        
         input[type="text"], select {
-            width: 100%; padding: 10px; background: #333; border: 1px solid transparent;
-            color: white; border-radius: 4px; box-sizing: border-box;
+            width: 100%; max-width: 400px; padding: 15px; border-radius: 30px; border: none;
+            background: var(--light-gray); color: white; font-size: 1rem; outline: none; text-align: center;
         }
-        input[type="text"]:focus { border-color: var(--spotify-green); outline: none; }
+        input:focus { box-shadow: 0 0 0 2px var(--green); }
 
-        /* Sliders */
-        .slider-container { margin-bottom: 15px; }
-        .slider-label { display: flex; justify-content: space-between; color: var(--text-subdued); font-size: 0.8em; margin-bottom: 5px; }
-        input[type="range"] { width: 100%; accent-color: var(--spotify-green); }
-
-        /* Search Results for Seeds */
-        .search-results {
-            margin-top: 10px; max-height: 200px; overflow-y: auto; background: #2a2a2a;
-            border-radius: 4px; display: none; border: 1px solid #444;
+        /* RESULTATS DE RECHERCHE (DROPDOWN) */
+        .results-dropdown {
+            max-width: 400px; margin: 10px auto 0; background: #333; border-radius: 8px;
+            max-height: 200px; overflow-y: auto; text-align: left; position: absolute;
+            left: 0; right: 0; z-index: 10; display: none;
         }
-        .search-item { padding: 8px; display: flex; align-items: center; cursor: pointer; border-bottom: 1px solid #333; }
-        .search-item:hover { background: #333; }
-        .search-item img { width: 30px; height: 30px; border-radius: 50%; margin-right: 10px; object-fit: cover;}
-        
-        .selected-seed {
-            margin-top: 10px; padding: 10px; background: rgba(29, 185, 84, 0.15);
-            border: 1px solid var(--spotify-green); border-radius: 4px;
-            display: none; align-items: center; justify-content: space-between;
+        .dropdown-item {
+            padding: 10px; border-bottom: 1px solid #444; cursor: pointer; display: flex; align-items: center;
+        }
+        .dropdown-item:hover { background: #444; }
+        .dropdown-item img { width: 40px; height: 40px; border-radius: 4px; margin-right: 15px; object-fit: cover; }
+
+        /* ELEMENT SÉLECTIONNÉ */
+        .selected-item {
+            margin-top: 20px; padding: 15px; background: rgba(29, 185, 84, 0.2); border: 1px solid var(--green);
+            border-radius: 8px; display: inline-flex; align-items: center; gap: 15px;
+        }
+        .selected-item button {
+            background: transparent; border: none; color: white; font-size: 1.2rem; cursor: pointer;
         }
 
-        /* Action Button */
+        /* BOUTON GÉNÉRER */
         .btn-generate {
-            width: 100%; padding: 14px; background-color: var(--spotify-green);
-            color: white; border: none; border-radius: 50px; font-size: 1rem;
-            font-weight: bold; cursor: pointer; transition: transform 0.1s;
+            display: block; width: 100%; max-width: 300px; margin: 30px auto 0;
+            padding: 15px; background: var(--green); color: white; border: none; border-radius: 50px;
+            font-size: 1.1rem; font-weight: bold; cursor: pointer; transition: transform 0.2s;
         }
-        .btn-generate:hover { transform: scale(1.02); background-color: #1ed760; }
+        .btn-generate:hover { transform: scale(1.05); background: #1ed760; }
+        .btn-generate:disabled { background: #555; cursor: not-allowed; transform: none; }
 
-        /* Recommendations Grid */
-        .rec-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 20px; }
-        .track-card {
-            background: var(--card-bg); padding: 15px; border-radius: var(--border-radius);
-            transition: background 0.3s; text-align: left; position: relative;
+        /* OPTIONS AVANCÉES (ACCORDÉON) */
+        .advanced-options { margin-top: 20px; text-align: left; max-width: 500px; margin-left: auto; margin-right: auto; }
+        details summary { color: var(--subtext); cursor: pointer; list-style: none; text-align: center; margin-bottom: 15px; }
+        .slider-group { margin-bottom: 15px; }
+        .slider-group label { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--subtext); margin-bottom: 5px; }
+        input[type=range] { width: 100%; accent-color: var(--green); }
+
+        /* GRILLE DE RESULTATS */
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 20px; margin-top: 40px; }
+        .card { background: var(--gray); padding: 15px; border-radius: 8px; transition: 0.3s; position: relative; }
+        .card:hover { background: var(--light-gray); }
+        .card img { width: 100%; aspect-ratio: 1; border-radius: 4px; margin-bottom: 10px; object-fit: cover; }
+        .card h3 { margin: 0; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .card p { margin: 5px 0 0; font-size: 0.85rem; color: var(--subtext); }
+        .card-link { position: absolute; inset: 0; }
+
+        /* MESSAGE D'ERREUR */
+        .error-banner {
+            background: #e91429; color: white; padding: 15px; border-radius: 8px;
+            text-align: center; margin-bottom: 20px; display: none;
         }
-        .track-card:hover { background: var(--card-hover); }
-        .track-img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 4px; margin-bottom: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
-        .track-title { font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 5px; font-size: 0.95rem;}
-        .track-artist { color: var(--text-subdued); font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .track-link { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;}
 
-        /* Messages */
-        .loading { text-align: center; color: var(--text-subdued); display: none; margin-top: 20px;}
-        .error-msg { background: #e91429; color: white; padding: 10px; border-radius: 4px; margin-bottom: 20px; display: none; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <div class="nav-bar">
-            <a href="index.html" class="btn-back">← Retour au Dashboard</a>
+        <!-- HEADER -->
+        <div class="header">
+            <a href="index.html" class="back-btn">← Retour</a>
+            <h2 style="margin:0">Découvertes 🔎</h2>
+            <div style="width: 60px;"></div> <!-- Spacer -->
         </div>
 
-        <h1>Générateur de <span>Recommandations</span></h1>
-        
-        <div id="error-display" class="error-msg"></div>
+        <div id="error-msg" class="error-banner"></div>
 
-        <div class="layout">
-            <!-- Sidebar Controls -->
-            <aside class="controls">
-                
-                <!-- 1. Seed: Genre -->
-                <div class="control-group">
-                    <label>1. Style (Genre)</label>
-                    <select id="genre-select">
-                        <option value="">Chargement des genres...</option>
-                    </select>
-                </div>
-
-                <!-- 2. Seed: Artist/Track -->
-                <div class="control-group">
-                    <label>2. Basé sur (Optionnel)</label>
-                    <input type="text" id="seed-search" placeholder="Rechercher un artiste ou titre..." autocomplete="off">
-                    <div id="search-results" class="search-results"></div>
-                    
-                    <div id="selected-seed-display" class="selected-seed">
-                        <span id="seed-name" style="font-size: 0.9em;"></span>
-                        <button onclick="clearSeed()" style="background:none; border:none; color:white; cursor:pointer; font-size: 1.2em;">&times;</button>
-                    </div>
-                    <input type="hidden" id="seed-id">
-                    <input type="hidden" id="seed-type">
-                </div>
-
-                <!-- 3. Sliders -->
-                <div class="control-group">
-                    <label>3. Filtres Audio</label>
-                    
-                    <div class="slider-container">
-                        <div class="slider-label"><span>Calme</span><span>Énergique</span></div>
-                        <input type="range" id="target_energy" min="0" max="1" step="0.05" value="0.6">
-                    </div>
-
-                    <div class="slider-container">
-                        <div class="slider-label"><span>Triste</span><span>Joyeux</span></div>
-                        <input type="range" id="target_valence" min="0" max="1" step="0.05" value="0.6">
-                    </div>
-
-                    <div class="slider-container">
-                        <div class="slider-label"><span>Statique</span><span>Dansant</span></div>
-                        <input type="range" id="target_danceability" min="0" max="1" step="0.05" value="0.6">
-                    </div>
-                </div>
-
-                <button class="btn-generate" onclick="getRecommendations()">Générer ✨</button>
-            </aside>
-
-            <!-- Results Area -->
-            <main>
-                <div id="loading" class="loading">Analyse de vos goûts et recherche... 🎧</div>
-                <div id="recommendations-grid" class="rec-grid">
-                    <div style="grid-column: 1/-1; text-align: center; color: #888; padding-top: 50px;">
-                        <p>Sélectionnez un genre ou un artiste à gauche pour commencer.</p>
-                    </div>
-                </div>
-            </main>
+        <!-- ONGLETS -->
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('track')">🎵 Par Titre</button>
+            <button class="tab-btn" onclick="switchTab('artist')">👤 Par Artiste</button>
+            <button class="tab-btn" onclick="switchTab('genre')">🎹 Par Genre</button>
         </div>
+
+        <!-- 1. MODE TITRE -->
+        <div id="section-track" class="search-section active">
+            <h3>Trouver des musiques comme...</h3>
+            <div style="position:relative">
+                <input type="text" id="input-track" placeholder="Tapez le nom d'une musique..." autocomplete="off">
+                <div id="results-track" class="results-dropdown"></div>
+            </div>
+            <!-- Selection display -->
+            <div id="selection-track" class="selected-item" style="display:none;">
+                <img id="img-track" src="" alt="" style="width:40px;height:40px;border-radius:4px;">
+                <div>
+                    <div id="txt-track-name" style="font-weight:bold"></div>
+                    <div id="txt-track-artist" style="font-size:0.8rem;color:#ccc"></div>
+                </div>
+                <button onclick="clearSelection('track')">✕</button>
+            </div>
+            <input type="hidden" id="seed-track-id">
+        </div>
+
+        <!-- 2. MODE ARTISTE -->
+        <div id="section-artist" class="search-section">
+            <h3>Trouver des artistes comme...</h3>
+            <div style="position:relative">
+                <input type="text" id="input-artist" placeholder="Tapez le nom d'un artiste..." autocomplete="off">
+                <div id="results-artist" class="results-dropdown"></div>
+            </div>
+            <!-- Selection display -->
+            <div id="selection-artist" class="selected-item" style="display:none;">
+                <img id="img-artist" src="" alt="" style="width:40px;height:40px;border-radius:50%;">
+                <div id="txt-artist-name" style="font-weight:bold"></div>
+                <button onclick="clearSelection('artist')">✕</button>
+            </div>
+            <input type="hidden" id="seed-artist-id">
+        </div>
+
+        <!-- 3. MODE GENRE -->
+        <div id="section-genre" class="search-section">
+            <h3>Explorer un style</h3>
+            <select id="select-genre">
+                <option value="">Chargement des genres...</option>
+            </select>
+        </div>
+
+        <!-- OPTIONS AVANCEES (COMMUN) -->
+        <div class="advanced-options">
+            <details>
+                <summary>Afficher les filtres avancés (Humeur, Énergie...)</summary>
+                <div class="slider-group">
+                    <label><span>Triste</span><span>Joyeux</span></label>
+                    <input type="range" id="opt-valence" min="0" max="1" step="0.1" value="0.5">
+                </div>
+                <div class="slider-group">
+                    <label><span>Calme</span><span>Énergique</span></label>
+                    <input type="range" id="opt-energy" min="0" max="1" step="0.1" value="0.5">
+                </div>
+                <div class="slider-group">
+                    <label><span>Statique</span><span>Dansant</span></label>
+                    <input type="range" id="opt-dance" min="0" max="1" step="0.1" value="0.5">
+                </div>
+            </details>
+        </div>
+
+        <button class="btn-generate" onclick="generate()">Lancer la recherche ✨</button>
+
+        <!-- GRID RESULTATS -->
+        <div id="grid" class="grid"></div>
+        <div id="loading" style="text-align:center; margin-top:40px; display:none; color:var(--subtext);">Recherche en cours...</div>
+
     </div>
 
     <script>
-        // --- AUTH ---
+        // --- GESTION TOKEN ---
         const token = localStorage.getItem('spotify_token');
         
-        if (!token) {
-            showError("Vous n'êtes pas connecté. Veuillez retourner sur l'accueil.");
+        // Si pas de token, on affiche l'erreur direct
+        if (!token || token === "undefined") {
+            displayError("Session expirée. Veuillez vous reconnecter.", true);
+        }
+
+        let currentTab = 'track';
+
+        // --- NAVIGATION ONGLETS ---
+        function switchTab(tab) {
+            currentTab = tab;
+            // UI Update Btns
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelector(`button[onclick="switchTab('${tab}')"]`).classList.add('active');
+            
+            // UI Update Sections
+            document.querySelectorAll('.search-section').forEach(s => s.classList.remove('active'));
+            document.getElementById(`section-${tab}`).classList.add('active');
+            
+            // Clear results
+            document.getElementById('grid').innerHTML = '';
         }
 
         // --- INIT ---
         window.addEventListener('load', () => {
-            if(token) loadSmartGenres();
-            setupSearch();
+            setupAutocomplete('track');
+            setupAutocomplete('artist');
+            loadGenres();
         });
 
-        // Fonction d'affichage d'erreur
-        function showError(msg) {
-            const el = document.getElementById('error-display');
-            el.textContent = msg;
-            el.style.display = 'block';
-            setTimeout(() => { el.style.display = 'none'; }, 5000);
-        }
-
-        // 1. CHARGEMENT INTELLIGENT DES GENRES
-        async function loadSmartGenres() {
-            const select = document.getElementById('genre-select');
-            
-            try {
-                // A. Récupérer la liste officielle des "Seeds" (Seuls genres acceptés par l'API reco)
-                const seedsRes = await fetch('https://api.spotify.com/v1/recommendations/available-genre-seeds', {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if(!seedsRes.ok) throw new Error("Impossible de charger les genres disponibles");
-                const seedsData = await seedsRes.json();
-                const validSeeds = new Set(seedsData.genres); // Set pour recherche rapide
-
-                // B. Récupérer les Tops Artistes de l'utilisateur pour trouver SES genres
-                const topRes = await fetch('https://api.spotify.com/v1/me/top/artists?limit=50', {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                
-                let myGenres = new Set();
-                if(topRes.ok) {
-                    const topData = await topRes.json();
-                    // Pour chaque artiste, on regarde ses genres
-                    topData.items.forEach(artist => {
-                        artist.genres.forEach(g => {
-                            // On normalise (minuscule, espace remplacé par tiret parfois)
-                            // L'API est stricte : il faut que le genre soit dans validSeeds
-                            // Souvent les genres d'artistes ("pop rap") matchent directement
-                            if(validSeeds.has(g)) {
-                                myGenres.add(g);
-                            }
-                        });
-                    });
-                }
-
-                // C. Construire le Select avec des Groupes
-                select.innerHTML = '<option value="">-- Choisir un genre --</option>';
-
-                // Groupe 1 : Vos Genres
-                if(myGenres.size > 0) {
-                    const groupMy = document.createElement('optgroup');
-                    groupMy.label = "⭐ Vos Genres Préférés";
-                    [...myGenres].sort().forEach(g => {
-                        const opt = document.createElement('option');
-                        opt.value = g;
-                        opt.textContent = capitalize(g);
-                        groupMy.appendChild(opt);
-                    });
-                    select.appendChild(groupMy);
-                }
-
-                // Groupe 2 : Tous les autres
-                const groupAll = document.createElement('optgroup');
-                groupAll.label = "🌍 Tous les Genres";
-                seedsData.genres.sort().forEach(g => {
-                    // On n'ajoute pas les doublons déjà dans "Vos Genres"
-                    if(!myGenres.has(g)) {
-                        const opt = document.createElement('option');
-                        opt.value = g;
-                        opt.textContent = capitalize(g);
-                        groupAll.appendChild(opt);
-                    }
-                });
-                select.appendChild(groupAll);
-
-            } catch (e) {
-                console.error(e);
-                showError("Erreur lors du chargement des genres : " + e.message);
-            }
-        }
-
-        function capitalize(s) {
-            return s.charAt(0).toUpperCase() + s.slice(1);
-        }
-
-        // 2. RECHERCHE (Seed)
-        function setupSearch() {
-            const input = document.getElementById('seed-search');
-            let timeout = null;
+        // --- RECHERCHE AUTOCOMPLETE (Generic) ---
+        function setupAutocomplete(type) {
+            const input = document.getElementById(`input-${type}`);
+            const results = document.getElementById(`results-${type}`);
+            let timer;
 
             input.addEventListener('input', (e) => {
-                clearTimeout(timeout);
+                clearTimeout(timer);
                 const query = e.target.value;
-                if(query.length < 2) return;
+                if(query.length < 2) { results.style.display = 'none'; return; }
 
-                timeout = setTimeout(async () => {
-                    try {
-                        const res = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=artist,track&limit=5`, {
-                            headers: { 'Authorization': `Bearer ${token}` }
-                        });
-                        if(res.ok) {
-                            const data = await res.json();
-                            showSearchResults(data);
-                        }
-                    } catch(e) { console.error(e); }
+                timer = setTimeout(() => {
+                    searchSpotify(query, type);
                 }, 400);
             });
-            
-            // Cacher les résultats si on clique ailleurs
+
+            // Close click outside
             document.addEventListener('click', (e) => {
-                if(!e.target.closest('.control-group')) {
-                    document.getElementById('search-results').style.display = 'none';
-                }
+                if(!e.target.closest(`#section-${type}`)) results.style.display = 'none';
             });
         }
 
-        function showSearchResults(data) {
-            const container = document.getElementById('search-results');
-            container.innerHTML = '';
-            
-            let items = [];
-            if(data.artists) items = items.concat(data.artists.items.map(i => ({...i, type: 'artist'})));
-            if(data.tracks) items = items.concat(data.tracks.items.map(i => ({...i, type: 'track'})));
-
-            if(items.length === 0) {
-                container.style.display = 'none';
-                return;
+        async function searchSpotify(query, type) {
+            try {
+                // type 'track' ou 'artist'
+                const res = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=${type}&limit=5`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if(res.status === 401) { displayError("Session expirée.", true); return; }
+                const data = await res.json();
+                
+                const items = (type === 'track') ? data.tracks.items : data.artists.items;
+                showDropdown(items, type);
+            } catch (e) {
+                console.error(e);
             }
+        }
 
-            container.style.display = 'block';
+        function showDropdown(items, type) {
+            const div = document.getElementById(`results-${type}`);
+            div.innerHTML = '';
+            div.style.display = 'block';
+
             items.forEach(item => {
-                const div = document.createElement('div');
-                div.className = 'search-item';
+                const row = document.createElement('div');
+                row.className = 'dropdown-item';
                 
-                let imgUrl = 'https://via.placeholder.com/30';
-                if (item.images && item.images.length) imgUrl = item.images[item.images.length-1].url;
-                else if (item.album && item.album.images.length) imgUrl = item.album.images[item.album.images.length-1].url;
-                
-                div.innerHTML = `
-                    <img src="${imgUrl}" alt="">
+                let imgUrl = 'https://via.placeholder.com/40';
+                if(item.images && item.images.length) imgUrl = item.images[item.images.length-1].url; // artist
+                if(item.album && item.album.images.length) imgUrl = item.album.images[item.album.images.length-1].url; // track
+
+                let subText = (type === 'track') ? item.artists[0].name : 'Artiste';
+
+                row.innerHTML = `
+                    <img src="${imgUrl}">
                     <div>
-                        <div style="font-weight:bold; font-size:0.9em">${item.name}</div>
-                        <div style="font-size:0.75em; color:#ccc">${item.type === 'artist' ? 'Artiste' : 'Titre'} ${item.artists ? '• ' + item.artists[0].name : ''}</div>
+                        <div style="font-weight:bold">${item.name}</div>
+                        <div style="font-size:0.8em; color:#bbb">${subText}</div>
                     </div>
                 `;
-                div.onclick = () => selectSeed(item);
-                container.appendChild(div);
+                row.onclick = () => selectItem(item, type, imgUrl, subText);
+                div.appendChild(row);
             });
         }
 
-        function selectSeed(item) {
-            document.getElementById('seed-id').value = item.id;
-            document.getElementById('seed-type').value = item.type; 
+        function selectItem(item, type, imgUrl, subText) {
+            // Remplir les champs cachés
+            document.getElementById(`seed-${type}-id`).value = item.id;
             
-            document.getElementById('search-results').style.display = 'none';
-            document.getElementById('seed-search').value = '';
-            document.getElementById('seed-name').textContent = `${item.type === 'artist' ? '👤' : '🎵'} ${item.name}`;
-            document.getElementById('selected-seed-display').style.display = 'flex';
+            // Afficher la selection jolie
+            document.getElementById(`results-${type}`).style.display = 'none';
+            document.getElementById(`input-${type}`).style.display = 'none'; // Cacher l'input
+            
+            const selDiv = document.getElementById(`selection-${type}`);
+            selDiv.style.display = 'inline-flex';
+            
+            if(type === 'track') {
+                document.getElementById('img-track').src = imgUrl;
+                document.getElementById('txt-track-name').textContent = item.name;
+                document.getElementById('txt-track-artist').textContent = subText;
+            } else {
+                document.getElementById('img-artist').src = imgUrl;
+                document.getElementById('txt-artist-name').textContent = item.name;
+            }
         }
 
-        function clearSeed() {
-            document.getElementById('seed-id').value = '';
-            document.getElementById('seed-type').value = '';
-            document.getElementById('selected-seed-display').style.display = 'none';
+        function clearSelection(type) {
+            document.getElementById(`seed-${type}-id`).value = '';
+            document.getElementById(`selection-${type}`).style.display = 'none';
+            document.getElementById(`input-${type}`).style.display = 'inline-block';
+            document.getElementById(`input-${type}`).value = '';
+            document.getElementById(`input-${type}`).focus();
         }
 
-        // 3. GENERATION
-        async function getRecommendations() {
-            const genre = document.getElementById('genre-select').value;
-            const seedId = document.getElementById('seed-id').value;
-            const seedType = document.getElementById('seed-type').value;
-            
-            const energy = document.getElementById('target_energy').value;
-            const valence = document.getElementById('target_valence').value;
-            const dance = document.getElementById('target_danceability').value;
+        // --- CHARGEMENT GENRES ---
+        async function loadGenres() {
+            try {
+                const res = await fetch('https://api.spotify.com/v1/recommendations/available-genre-seeds', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if(res.status === 401) return; // Silent fail handled elsewhere
+                const data = await res.json();
+                
+                const select = document.getElementById('select-genre');
+                select.innerHTML = '<option value="">-- Choisir un style --</option>';
+                data.genres.forEach(g => {
+                    const opt = document.createElement('option');
+                    opt.value = g;
+                    opt.textContent = g.charAt(0).toUpperCase() + g.slice(1);
+                    select.appendChild(opt);
+                });
+            } catch(e) {}
+        }
 
-            // Vérification
-            if (!genre && !seedId) {
-                showError("⚠️ Veuillez sélectionner un Genre OU rechercher un Artiste/Titre comme base.");
-                return;
+        // --- GENERATION (LE COEUR DU TRUC) ---
+        async function generate() {
+            const grid = document.getElementById('grid');
+            const loader = document.getElementById('loading');
+            const errorDiv = document.getElementById('error-msg');
+            
+            grid.innerHTML = '';
+            errorDiv.style.display = 'none';
+            loader.style.display = 'block';
+
+            // 1. Récupérer les seeds selon l'onglet actif
+            let url = 'https://api.spotify.com/v1/recommendations?limit=24&market=FR';
+            
+            if (currentTab === 'track') {
+                const id = document.getElementById('seed-track-id').value;
+                if(!id) return displayError("Veuillez sélectionner une musique d'abord.");
+                url += `&seed_tracks=${id}`;
+            } 
+            else if (currentTab === 'artist') {
+                const id = document.getElementById('seed-artist-id').value;
+                if(!id) return displayError("Veuillez sélectionner un artiste d'abord.");
+                url += `&seed_artists=${id}`;
+            }
+            else if (currentTab === 'genre') {
+                const genre = document.getElementById('select-genre').value;
+                if(!genre) return displayError("Veuillez choisir un genre.");
+                url += `&seed_genres=${genre}`;
             }
 
-            // Construction URL
-            // Note: market=FR est important pour que les liens fonctionnent
-            let url = `https://api.spotify.com/v1/recommendations?limit=24&market=FR`;
-            url += `&target_energy=${energy}&target_valence=${valence}&target_danceability=${dance}`;
+            // 2. Ajouter les sliders (optionnels mais toujours lus)
+            const val = document.getElementById('opt-valence').value;
+            const energy = document.getElementById('opt-energy').value;
+            const dance = document.getElementById('opt-dance').value;
             
-            // Spotify API rule: max 5 seeds total. 
-            // Here we use either 1 genre, 1 artist/track, or both. Safe.
-            if (genre) url += `&seed_genres=${genre}`;
-            if (seedId) {
-                if (seedType === 'artist') url += `&seed_artists=${seedId}`;
-                if (seedType === 'track') url += `&seed_tracks=${seedId}`;
-            }
-
-            document.getElementById('loading').style.display = 'block';
-            document.getElementById('recommendations-grid').innerHTML = '';
-            document.getElementById('error-display').style.display = 'none';
+            // On n'applique les filtres que si l'utilisateur y a touché (pas défaut 0.5)
+            // Pour simplifier ici, on les envoie tout le temps, c'est pas grave
+            url += `&target_valence=${val}&target_energy=${energy}&target_danceability=${dance}`;
 
             try {
                 const res = await fetch(url, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                
-                const data = await res.json();
 
-                if(!res.ok) {
-                    // Gestion fine des erreurs API
-                    if (data.error) {
-                        throw new Error(data.error.message || "Erreur API inconnue");
-                    }
-                    throw new Error("Erreur HTTP " + res.status);
+                if (res.status === 401) {
+                    displayError("Votre session a expiré. Cliquez ici pour recharger.", true);
+                    return;
                 }
+                
+                if (!res.ok) throw new Error("Erreur API");
 
-                renderTracks(data.tracks);
+                const data = await res.json();
+                displayTracks(data.tracks);
 
             } catch (e) {
-                console.error(e);
-                showError("Oups ! " + e.message + ". Essayez de changer les critères.");
+                displayError("Erreur technique : " + e.message);
             } finally {
-                document.getElementById('loading').style.display = 'none';
+                loader.style.display = 'none';
             }
         }
 
-        function renderTracks(tracks) {
-            const container = document.getElementById('recommendations-grid');
-            container.innerHTML = '';
-
-            if (!tracks || tracks.length === 0) {
-                container.innerHTML = '<div style="grid-column:1/-1; text-align:center">Aucune recommandation trouvée. Essayez des critères moins stricts (bougez les curseurs vers le milieu).</div>';
+        function displayTracks(tracks) {
+            const grid = document.getElementById('grid');
+            if(tracks.length === 0) {
+                grid.innerHTML = '<p style="text-align:center;grid-column:1/-1">Aucun résultat trouvé.</p>';
                 return;
             }
 
             tracks.forEach(track => {
-                const img = track.album.images[1] ? track.album.images[1].url : (track.album.images[0]?.url || 'https://via.placeholder.com/150');
-                
-                const html = `
-                    <div class="track-card">
-                        <a href="${track.uri}" class="track-link"></a>
-                        <img src="${img}" class="track-img" alt="${track.name}">
-                        <div class="track-title" title="${track.name}">${track.name}</div>
-                        <div class="track-artist">${track.artists.map(a => a.name).join(', ')}</div>
-                    </div>
+                const img = track.album.images[0] ? track.album.images[0].url : '';
+                const div = document.createElement('div');
+                div.className = 'card';
+                div.innerHTML = `
+                    <a href="${track.uri}" class="card-link"></a>
+                    <img src="${img}" loading="lazy">
+                    <h3>${track.name}</h3>
+                    <p>${track.artists.map(a=>a.name).join(', ')}</p>
                 `;
-                container.insertAdjacentHTML('beforeend', html);
+                grid.appendChild(div);
             });
+        }
+
+        function displayError(msg, isAuthError = false) {
+            const el = document.getElementById('error-msg');
+            el.innerHTML = msg;
+            if(isAuthError) {
+                el.innerHTML += '<br><br><button onclick="window.location.href=\'index.html\'" style="padding:5px 10px;cursor:pointer">Se reconnecter</button>';
+            }
+            el.style.display = 'block';
+            document.getElementById('loading').style.display = 'none';
         }
     </script>
 </body>
