@@ -196,40 +196,93 @@
 
     </div>
 
-    <script>
-        // --- GESTION TOKEN ---
-        const token = localStorage.getItem('spotify_token');
-        
-        // Si pas de token, on affiche l'erreur direct
-        if (!token || token === "undefined") {
-            displayError("Session expirée. Veuillez vous reconnecter.", true);
+        <script>
+        // --- 1. RECUPERATION ET NETTOYAGE DU TOKEN (CRUCIAL) ---
+        function getCleanToken() {
+            let rawToken = localStorage.getItem('spotify_token');
+            
+            if (!rawToken) return null;
+
+            // Enlève les guillemets au début et à la fin si présents
+            if (rawToken.startsWith('"') && rawToken.endsWith('"')) {
+                rawToken = rawToken.slice(1, -1);
+            }
+            
+            // Vérifie si le token n'est pas littéralement le mot "undefined" ou "null"
+            if (rawToken === 'undefined' || rawToken === 'null') return null;
+            
+            return rawToken.trim(); // Enlève les espaces vides
         }
 
+        const token = getCleanToken();
+
+        // --- 2. NAVIGATION ---
         let currentTab = 'track';
 
-        // --- NAVIGATION ONGLETS ---
         function switchTab(tab) {
             currentTab = tab;
-            // UI Update Btns
+            // Mise à jour visuelle des boutons
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             document.querySelector(`button[onclick="switchTab('${tab}')"]`).classList.add('active');
             
-            // UI Update Sections
+            // Mise à jour visuelle des sections
             document.querySelectorAll('.search-section').forEach(s => s.classList.remove('active'));
             document.getElementById(`section-${tab}`).classList.add('active');
             
-            // Clear results
+            // Nettoyage de la grille
             document.getElementById('grid').innerHTML = '';
         }
 
-        // --- INIT ---
+        // --- 3. INITIALISATION ---
         window.addEventListener('load', () => {
-            setupAutocomplete('track');
-            setupAutocomplete('artist');
-            loadGenres();
+            console.log("Token utilisé :", token); // Pour le debug (F12)
+
+            if (!token) {
+                displayError("Erreur d'authentification : Aucun token valide trouvé. Veuillez retourner sur l'accueil pour vous reconnecter.");
+            } else {
+                setupAutocomplete('track');
+                setupAutocomplete('artist');
+                loadGenres(); // C'est souvent ici que ça bloquait
+            }
         });
 
-        // --- RECHERCHE AUTOCOMPLETE (Generic) ---
+        // --- 4. CHARGEMENT DES GENRES ---
+        async function loadGenres() {
+            try {
+                const res = await fetch('https://api.spotify.com/v1/recommendations/available-genre-seeds', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!res.ok) {
+                    // Si erreur 401, c'est l'expiration
+                    if (res.status === 401) {
+                        displayError("Votre session a expiré. Cliquez sur 'Se reconnecter'.");
+                        return;
+                    }
+                    throw new Error(`Statut HTTP: ${res.status}`);
+                }
+                
+                const data = await res.json();
+                
+                const select = document.getElementById('select-genre');
+                // On garde l'option par défaut et on ajoute les autres
+                select.innerHTML = '<option value="">-- Choisir un style --</option>';
+                
+                data.genres.forEach(g => {
+                    const opt = document.createElement('option');
+                    opt.value = g;
+                    // Première lettre en majuscule
+                    opt.textContent = g.charAt(0).toUpperCase() + g.slice(1);
+                    select.appendChild(opt);
+                });
+
+            } catch (e) {
+                console.error("Erreur Genres:", e);
+                // On n'affiche pas l'erreur à l'utilisateur pour les genres, c'est pas bloquant pour les autres onglets
+            }
+        }
+
+        // --- 5. RECHERCHE (AUTOCOMPLETE) ---
         function setupAutocomplete(type) {
             const input = document.getElementById(`input-${type}`);
             const results = document.getElementById(`results-${type}`);
@@ -240,12 +293,10 @@
                 const query = e.target.value;
                 if(query.length < 2) { results.style.display = 'none'; return; }
 
-                timer = setTimeout(() => {
-                    searchSpotify(query, type);
-                }, 400);
+                timer = setTimeout(() => { searchSpotify(query, type); }, 400);
             });
 
-            // Close click outside
+            // Fermer si clic dehors
             document.addEventListener('click', (e) => {
                 if(!e.target.closest(`#section-${type}`)) results.style.display = 'none';
             });
@@ -253,19 +304,16 @@
 
         async function searchSpotify(query, type) {
             try {
-                // type 'track' ou 'artist'
                 const res = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=${type}&limit=5`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 
-                if(res.status === 401) { displayError("Session expirée.", true); return; }
+                if (!res.ok) return; // On ignore silencieusement les erreurs de frappe rapide
+
                 const data = await res.json();
-                
                 const items = (type === 'track') ? data.tracks.items : data.artists.items;
                 showDropdown(items, type);
-            } catch (e) {
-                console.error(e);
-            }
+            } catch (e) { console.error(e); }
         }
 
         function showDropdown(items, type) {
@@ -273,20 +321,25 @@
             div.innerHTML = '';
             div.style.display = 'block';
 
+            if(items.length === 0) {
+                div.style.display = 'none';
+                return;
+            }
+
             items.forEach(item => {
                 const row = document.createElement('div');
                 row.className = 'dropdown-item';
                 
-                let imgUrl = 'https://via.placeholder.com/40';
-                if(item.images && item.images.length) imgUrl = item.images[item.images.length-1].url; // artist
-                if(item.album && item.album.images.length) imgUrl = item.album.images[item.album.images.length-1].url; // track
+                let imgUrl = 'https://via.placeholder.com/45';
+                if(item.images && item.images.length) imgUrl = item.images[item.images.length-1].url;
+                else if(item.album && item.album.images.length) imgUrl = item.album.images[item.album.images.length-1].url;
 
                 let subText = (type === 'track') ? item.artists[0].name : 'Artiste';
 
                 row.innerHTML = `
                     <img src="${imgUrl}">
                     <div>
-                        <div style="font-weight:bold">${item.name}</div>
+                        <div style="font-weight:bold; font-size:0.9rem">${item.name}</div>
                         <div style="font-size:0.8em; color:#bbb">${subText}</div>
                     </div>
                 `;
@@ -296,12 +349,11 @@
         }
 
         function selectItem(item, type, imgUrl, subText) {
-            // Remplir les champs cachés
             document.getElementById(`seed-${type}-id`).value = item.id;
             
-            // Afficher la selection jolie
+            // UI Switch
             document.getElementById(`results-${type}`).style.display = 'none';
-            document.getElementById(`input-${type}`).style.display = 'none'; // Cacher l'input
+            document.getElementById(`input-${type}`).style.display = 'none';
             
             const selDiv = document.getElementById(`selection-${type}`);
             selDiv.style.display = 'inline-flex';
@@ -324,27 +376,7 @@
             document.getElementById(`input-${type}`).focus();
         }
 
-        // --- CHARGEMENT GENRES ---
-        async function loadGenres() {
-            try {
-                const res = await fetch('https://api.spotify.com/v1/recommendations/available-genre-seeds', {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if(res.status === 401) return; // Silent fail handled elsewhere
-                const data = await res.json();
-                
-                const select = document.getElementById('select-genre');
-                select.innerHTML = '<option value="">-- Choisir un style --</option>';
-                data.genres.forEach(g => {
-                    const opt = document.createElement('option');
-                    opt.value = g;
-                    opt.textContent = g.charAt(0).toUpperCase() + g.slice(1);
-                    select.appendChild(opt);
-                });
-            } catch(e) {}
-        }
-
-        // --- GENERATION (LE COEUR DU TRUC) ---
+        // --- 6. GENERATION FINALE ---
         async function generate() {
             const grid = document.getElementById('grid');
             const loader = document.getElementById('loading');
@@ -352,35 +384,33 @@
             
             grid.innerHTML = '';
             errorDiv.style.display = 'none';
-            loader.style.display = 'block';
-
-            // 1. Récupérer les seeds selon l'onglet actif
-            let url = 'https://api.spotify.com/v1/recommendations?limit=24&market=FR';
             
+            // Validation
+            let url = 'https://api.spotify.com/v1/recommendations?limit=24&market=FR';
+            let hasSeed = false;
+
             if (currentTab === 'track') {
                 const id = document.getElementById('seed-track-id').value;
-                if(!id) return displayError("Veuillez sélectionner une musique d'abord.");
-                url += `&seed_tracks=${id}`;
-            } 
-            else if (currentTab === 'artist') {
+                if(id) { url += `&seed_tracks=${id}`; hasSeed = true; }
+            } else if (currentTab === 'artist') {
                 const id = document.getElementById('seed-artist-id').value;
-                if(!id) return displayError("Veuillez sélectionner un artiste d'abord.");
-                url += `&seed_artists=${id}`;
-            }
-            else if (currentTab === 'genre') {
+                if(id) { url += `&seed_artists=${id}`; hasSeed = true; }
+            } else if (currentTab === 'genre') {
                 const genre = document.getElementById('select-genre').value;
-                if(!genre) return displayError("Veuillez choisir un genre.");
-                url += `&seed_genres=${genre}`;
+                if(genre) { url += `&seed_genres=${genre}`; hasSeed = true; }
             }
 
-            // 2. Ajouter les sliders (optionnels mais toujours lus)
-            const val = document.getElementById('opt-valence').value;
-            const energy = document.getElementById('opt-energy').value;
-            const dance = document.getElementById('opt-dance').value;
-            
-            // On n'applique les filtres que si l'utilisateur y a touché (pas défaut 0.5)
-            // Pour simplifier ici, on les envoie tout le temps, c'est pas grave
-            url += `&target_valence=${val}&target_energy=${energy}&target_danceability=${dance}`;
+            if(!hasSeed) {
+                alert("Attention : Vous devez sélectionner une musique, un artiste ou un genre pour lancer la recherche.");
+                return;
+            }
+
+            // Ajout des Sliders
+            url += `&target_valence=${document.getElementById('opt-valence').value}`;
+            url += `&target_energy=${document.getElementById('opt-energy').value}`;
+            url += `&target_danceability=${document.getElementById('opt-dance').value}`;
+
+            loader.style.display = 'block';
 
             try {
                 const res = await fetch(url, {
@@ -388,16 +418,26 @@
                 });
 
                 if (res.status === 401) {
-                    displayError("Votre session a expiré. Cliquez ici pour recharger.", true);
+                    displayError("Votre session a expiré.");
                     return;
                 }
                 
-                if (!res.ok) throw new Error("Erreur API");
-
+                if (!res.ok) {
+                    const errTxt = await res.text();
+                    throw new Error("Erreur Spotify: " + errTxt);
+                }
+                
                 const data = await res.json();
-                displayTracks(data.tracks);
+                
+                // Si pas d'erreur mais tracks vide
+                if (!data.tracks || data.tracks.length === 0) {
+                     grid.innerHTML = '<p style="text-align:center; grid-column:1/-1">Aucun résultat trouvé. Essayez de changer de style ou de titre de référence.</p>';
+                } else {
+                    displayTracks(data.tracks);
+                }
 
             } catch (e) {
+                console.error(e);
                 displayError("Erreur technique : " + e.message);
             } finally {
                 loader.style.display = 'none';
@@ -406,11 +446,7 @@
 
         function displayTracks(tracks) {
             const grid = document.getElementById('grid');
-            if(tracks.length === 0) {
-                grid.innerHTML = '<p style="text-align:center;grid-column:1/-1">Aucun résultat trouvé.</p>';
-                return;
-            }
-
+            
             tracks.forEach(track => {
                 const img = track.album.images[0] ? track.album.images[0].url : '';
                 const div = document.createElement('div');
@@ -425,15 +461,21 @@
             });
         }
 
-        function displayError(msg, isAuthError = false) {
+        function displayError(msg) {
             const el = document.getElementById('error-msg');
-            el.innerHTML = msg;
-            if(isAuthError) {
-                el.innerHTML += '<br><br><button onclick="window.location.href=\'index.html\'" style="padding:5px 10px;cursor:pointer">Se reconnecter</button>';
+            const txt = document.getElementById('error-text');
+            if(txt) txt.textContent = msg;
+            else el.textContent = msg;
+            
+            // Ajoute le bouton retour si pas présent
+            if(!el.innerHTML.includes('btn-reconnect')) {
+                 el.innerHTML += '<br><a href="index.html" class="btn-reconnect">Se reconnecter</a>';
             }
+            
             el.style.display = 'block';
             document.getElementById('loading').style.display = 'none';
         }
     </script>
+
 </body>
 </html>
