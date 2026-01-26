@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Générateur de Recommandations - Spotify Stats</title>
+    <style>
+        :root {
+            --spotify-green: #1DB954;
+            --spotify-white: #FFFFFF;
+            --bg-dark: #121212;
+            --card-bg: #181818;
+            --card-hover: #282828;
+            --text-subdued: #b3b3b3;
+            --border-radius: 8px;
+        }
+
+        body {
+            font-family: 'Circular', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--spotify-white);
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        h1, h2, h3 { color: var(--spotify-white); margin-bottom: 0.5em; }
+        h1 span { color: var(--spotify-green); }
+
+        /* Navigation */
+        .nav-bar {
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #333;
+        }
+        .btn-back {
+            text-decoration: none;
+            color: var(--text-subdued);
+            font-weight: bold;
+            display: inline-flex;
+            align-items: center;
+            transition: color 0.2s;
+        }
+        .btn-back:hover { color: var(--spotify-white); }
+
+        /* Layout Grid */
+        .layout {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 30px;
+        }
+        @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } }
+
+        /* Controls Section */
+        .controls {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: var(--border-radius);
+            height: fit-content;
+        }
+
+        .control-group { margin-bottom: 25px; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; color: var(--spotify-green); }
+        
+        input[type="text"], select {
+            width: 100%;
+            padding: 10px;
+            background: #333;
+            border: 1px solid transparent;
+            color: white;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        input[type="text"]:focus { border-color: var(--spotify-green); outline: none; }
+
+        /* Sliders */
+        .slider-container { margin-bottom: 15px; }
+        .slider-label { display: flex; justify-content: space-between; color: var(--text-subdued); font-size: 0.9em; margin-bottom: 5px; }
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--spotify-green);
+        }
+
+        /* Search Results for Seeds */
+        .search-results {
+            margin-top: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            background: #2a2a2a;
+            border-radius: 4px;
+            display: none;
+        }
+        .search-item {
+            padding: 8px;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            border-bottom: 1px solid #333;
+        }
+        .search-item:hover { background: #333; }
+        .search-item img { width: 30px; height: 30px; border-radius: 50%; margin-right: 10px; }
+        .selected-seed {
+            margin-top: 10px;
+            padding: 8px;
+            background: rgba(29, 185, 84, 0.2);
+            border: 1px solid var(--spotify-green);
+            border-radius: 4px;
+            display: none; /* Hidden until selected */
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        /* Action Button */
+        .btn-generate {
+            width: 100%;
+            padding: 14px;
+            background-color: var(--spotify-green);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .btn-generate:hover { transform: scale(1.02); background-color: #1ed760; }
+
+        /* Recommendations Grid */
+        .rec-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 20px;
+        }
+        .track-card {
+            background: var(--card-bg);
+            padding: 15px;
+            border-radius: var(--border-radius);
+            transition: background 0.3s;
+            text-align: left;
+            position: relative;
+        }
+        .track-card:hover { background: var(--card-hover); }
+        .track-img {
+            width: 100%;
+            aspect-ratio: 1;
+            object-fit: cover;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        .track-title {
+            font-weight: bold;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 5px;
+        }
+        .track-artist {
+            color: var(--text-subdued);
+            font-size: 0.9em;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .track-link {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+        }
+
+        /* Loading */
+        .loading { text-align: center; color: var(--text-subdued); display: none; margin-top: 20px;}
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="nav-bar">
+            <a href="index.html" class="btn-back">← Retour au Dashboard</a>
+        </div>
+
+        <h1>Générateur de <span>Recommandations</span></h1>
+        <p style="color: var(--text-subdued); margin-bottom: 30px;">
+            Créez une playlist unique basée sur vos goûts. Sélectionnez un genre, un artiste ou un titre de référence et ajustez les critères.
+        </p>
+
+        <div class="layout">
+            <!-- Sidebar Controls -->
+            <aside class="controls">
+                
+                <!-- 1. Seed: Genre -->
+                <div class="control-group">
+                    <label>1. Style (Genre)</label>
+                    <select id="genre-select">
+                        <option value="">-- Sélectionner un genre --</option>
+                        <!-- Peuplé par JS -->
+                    </select>
+                </div>
+
+                <!-- 2. Seed: Artist/Track -->
+                <div class="control-group">
+                    <label>2. Basé sur (Optionnel)</label>
+                    <input type="text" id="seed-search" placeholder="Rechercher un artiste ou titre..." autocomplete="off">
+                    <div id="search-results" class="search-results"></div>
+                    
+                    <div id="selected-seed-display" class="selected-seed">
+                        <span id="seed-name"></span>
+                        <button onclick="clearSeed()" style="background:none; border:none; color:white; cursor:pointer;">✕</button>
+                    </div>
+                    <input type="hidden" id="seed-id">
+                    <input type="hidden" id="seed-type">
+                </div>
+
+                <!-- 3. Sliders -->
+                <div class="control-group">
+                    <label>3. Ambiance</label>
+                    
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Calme</span><span>Énergique</span></div>
+                        <input type="range" id="target_energy" min="0" max="1" step="0.1" value="0.5">
+                    </div>
+
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Triste/Sombre</span><span>Joyeux/Positif</span></div>
+                        <input type="range" id="target_valence" min="0" max="1" step="0.1" value="0.5">
+                    </div>
+
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Statique</span><span>Dansant</span></div>
+                        <input type="range" id="target_danceability" min="0" max="1" step="0.1" value="0.5">
+                    </div>
+                </div>
+
+                <button class="btn-generate" onclick="getRecommendations()">Générer ✨</button>
+            </aside>
+
+            <!-- Results Area -->
+            <main>
+                <h2 id="results-title">Résultats</h2>
+                <div id="loading" class="loading">Recherche des meilleures pépites...</div>
+                <div id="recommendations-grid" class="rec-grid">
+                    <!-- Les cartes seront injectées ici -->
+                    <p style="color: var(--text-subdued);">Configurez les options à gauche et cliquez sur Générer.</p>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        // --- AUTH ---
+        // On récupère le token stocké par index.html
+        const token = localStorage.getItem('spotify_token');
+        
+        if (!token) {
+            alert("Erreur : Aucun token trouvé. Veuillez vous connecter d'abord via la page d'accueil (index.html).");
+            window.location.href = 'index.html';
+        }
+
+        // --- INIT ---
+        window.addEventListener('load', () => {
+            fetchGenres();
+            setupSearch();
+        });
+
+        // 1. Fetch Genres
+        async function fetchGenres() {
+            try {
+                const res = await fetch('https://api.spotify.com/v1/recommendations/available-genre-seeds', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                const select = document.getElementById('genre-select');
+                
+                data.genres.forEach(genre => {
+                    const option = document.createElement('option');
+                    option.value = genre;
+                    option.textContent = genre.charAt(0).toUpperCase() + genre.slice(1);
+                    select.appendChild(option);
+                });
+            } catch (e) {
+                console.error("Erreur genres:", e);
+            }
+        }
+
+        // 2. Search Logic (Pour trouver un artiste/titre seed)
+        function setupSearch() {
+            const input = document.getElementById('seed-search');
+            let timeout = null;
+
+            input.addEventListener('input', (e) => {
+                clearTimeout(timeout);
+                const query = e.target.value;
+                if(query.length < 3) return;
+
+                timeout = setTimeout(async () => {
+                    const res = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=artist,track&limit=5`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+                    showSearchResults(data);
+                }, 500);
+            });
+        }
+
+        function showSearchResults(data) {
+            const container = document.getElementById('search-results');
+            container.innerHTML = '';
+            container.style.display = 'block';
+
+            // Mélanger artistes et tracks pour l'affichage
+            let items = [];
+            if(data.artists) items = items.concat(data.artists.items.map(i => ({...i, type: 'artist'})));
+            if(data.tracks) items = items.concat(data.tracks.items.map(i => ({...i, type: 'track'})));
+
+            items.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'search-item';
+                // Image handling
+                let imgUrl = '';
+                if (item.images && item.images.length) imgUrl = item.images[item.images.length-1].url;
+                else if (item.album && item.album.images.length) imgUrl = item.album.images[item.album.images.length-1].url;
+                
+                div.innerHTML = `
+                    <img src="${imgUrl || 'https://via.placeholder.com/30'}" alt="">
+                    <div>
+                        <div style="font-weight:bold">${item.name}</div>
+                        <div style="font-size:0.8em; color:#ccc">${item.type.toUpperCase()} ${item.artists ? '• ' + item.artists[0].name : ''}</div>
+                    </div>
+                `;
+                div.onclick = () => selectSeed(item);
+                container.appendChild(div);
+            });
+        }
+
+        function selectSeed(item) {
+            document.getElementById('seed-id').value = item.id;
+            document.getElementById('seed-type').value = item.type; // 'artist' ou 'track'
+            
+            // UI Update
+            document.getElementById('search-results').style.display = 'none';
+            document.getElementById('seed-search').value = '';
+            document.getElementById('seed-name').textContent = `${item.type === 'artist' ? 'Artiste' : 'Titre'}: ${item.name}`;
+            document.getElementById('selected-seed-display').style.display = 'flex';
+        }
+
+        function clearSeed() {
+            document.getElementById('seed-id').value = '';
+            document.getElementById('seed-type').value = '';
+            document.getElementById('selected-seed-display').style.display = 'none';
+        }
+
+        // 3. MAIN FUNCTION: Get Recommendations
+        async function getRecommendations() {
+            const genre = document.getElementById('genre-select').value;
+            const seedId = document.getElementById('seed-id').value;
+            const seedType = document.getElementById('seed-type').value;
+            
+            const energy = document.getElementById('target_energy').value;
+            const valence = document.getElementById('target_valence').value;
+            const dance = document.getElementById('target_danceability').value;
+
+            // Validation : Il faut au moins 1 seed (Genre, Artiste ou Titre)
+            if (!genre && !seedId) {
+                alert("Veuillez sélectionner au moins un genre ou rechercher un artiste/titre de référence.");
+                return;
+            }
+
+            // Construction URL
+            let url = `https://api.spotify.com/v1/recommendations?limit=20&market=FR`;
+            url += `&target_energy=${energy}&target_valence=${valence}&target_danceability=${dance}`;
+            
+            if (genre) url += `&seed_genres=${genre}`;
+            if (seedId) {
+                if (seedType === 'artist') url += `&seed_artists=${seedId}`;
+                if (seedType === 'track') url += `&seed_tracks=${seedId}`;
+            }
+
+            // Fetch
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('recommendations-grid').innerHTML = '';
+
+            try {
+                const res = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if(!res.ok) throw new Error("Erreur API");
+
+                const data = await res.json();
+                renderTracks(data.tracks);
+            } catch (e) {
+                console.error(e);
+                alert("Une erreur est survenue lors de la récupération des recommandations.");
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        function renderTracks(tracks) {
+            const container = document.getElementById('recommendations-grid');
+            container.innerHTML = '';
+
+            if (tracks.length === 0) {
+                container.innerHTML = '<p>Aucun résultat trouvé pour ces critères trop spécifiques.</p>';
+                return;
+            }
+
+            tracks.forEach(track => {
+                const img = track.album.images[1] ? track.album.images[1].url : (track.album.images[0]?.url || '');
+                const html = `
+                    <div class="track-card">
+                        <a href="${track.uri}" class="track-link"></a> <!-- Deep link to open in App -->
+                        <img src="${img}" class="track-img" alt="${track.name}">
+                        <div class="track-title" title="${track.name}">${track.name}</div>
+                        <div class="track-artist">${track.artists.map(a => a.name).join(', ')}</div>
+                    </div>
+                `;
+                container.insertAdjacentHTML('beforeend', html);
+            });
+        }
+    </script>
+</body>
+</html>
