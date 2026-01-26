@@ -3,10 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spotify Discover - Recommandations</title>
+    <title>Spotify Discover (via Last.fm)</title>
     <style>
         :root {
             --green: #1DB954;
+            --lastfm-red: #ba0000;
             --black: #121212;
             --gray: #181818;
             --light-gray: #282828;
@@ -26,11 +27,11 @@
 
         /* HEADER & NAVIGATION */
         .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 30px; }
-        .back-btn { color: var(--subtext); text-decoration: none; font-weight: bold; }
+        .back-btn { color: var(--subtext); text-decoration: none; font-weight: bold; font-size: 0.9rem;}
         .back-btn:hover { color: var(--green); }
 
         /* TABS (ONGLETS) */
-        .tabs { display: flex; gap: 10px; margin-bottom: 20px; justify-content: center; }
+        .tabs { display: flex; gap: 10px; margin-bottom: 25px; justify-content: center; }
         .tab-btn {
             background: transparent; border: 2px solid var(--light-gray); color: var(--subtext);
             padding: 10px 25px; border-radius: 30px; cursor: pointer; font-weight: bold; font-size: 1rem;
@@ -42,11 +43,11 @@
         /* SECTIONS DE RECHERCHE */
         .search-section {
             background: var(--gray); padding: 30px; border-radius: 10px; text-align: center;
-            display: none; /* Caché par défaut */
+            display: none; min-height: 150px;
         }
         .search-section.active { display: block; animation: fadeIn 0.3s; }
 
-        input[type="text"], select {
+        input[type="text"] {
             width: 100%; max-width: 400px; padding: 15px; border-radius: 30px; border: none;
             background: var(--light-gray); color: white; font-size: 1rem; outline: none; text-align: center;
         }
@@ -55,14 +56,14 @@
         /* RESULTATS DE RECHERCHE (DROPDOWN) */
         .results-dropdown {
             max-width: 400px; margin: 10px auto 0; background: #333; border-radius: 8px;
-            max-height: 200px; overflow-y: auto; text-align: left; position: absolute;
-            left: 0; right: 0; z-index: 10; display: none;
+            max-height: 250px; overflow-y: auto; text-align: left; position: absolute;
+            left: 0; right: 0; z-index: 10; display: none; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
         .dropdown-item {
             padding: 10px; border-bottom: 1px solid #444; cursor: pointer; display: flex; align-items: center;
         }
         .dropdown-item:hover { background: #444; }
-        .dropdown-item img { width: 40px; height: 40px; border-radius: 4px; margin-right: 15px; object-fit: cover; }
+        .dropdown-item img { width: 45px; height: 45px; border-radius: 4px; margin-right: 15px; object-fit: cover; }
 
         /* ELEMENT SÉLECTIONNÉ */
         .selected-item {
@@ -70,8 +71,9 @@
             border-radius: 8px; display: inline-flex; align-items: center; gap: 15px;
         }
         .selected-item button {
-            background: transparent; border: none; color: white; font-size: 1.2rem; cursor: pointer;
+            background: transparent; border: none; color: white; font-size: 1.2rem; cursor: pointer; opacity: 0.7;
         }
+        .selected-item button:hover { opacity: 1; }
 
         /* BOUTON GÉNÉRER */
         .btn-generate {
@@ -80,31 +82,27 @@
             font-size: 1.1rem; font-weight: bold; cursor: pointer; transition: transform 0.2s;
         }
         .btn-generate:hover { transform: scale(1.05); background: #1ed760; }
-        .btn-generate:disabled { background: #555; cursor: not-allowed; transform: none; }
-
-        /* OPTIONS AVANCÉES (ACCORDÉON) */
-        .advanced-options { margin-top: 20px; text-align: left; max-width: 500px; margin-left: auto; margin-right: auto; }
-        details summary { color: var(--subtext); cursor: pointer; list-style: none; text-align: center; margin-bottom: 15px; }
-        .slider-group { margin-bottom: 15px; }
-        .slider-group label { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--subtext); margin-bottom: 5px; }
-        input[type=range] { width: 100%; accent-color: var(--green); }
 
         /* GRILLE DE RESULTATS */
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 20px; margin-top: 40px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 20px; margin-top: 40px; }
         .card { background: var(--gray); padding: 15px; border-radius: 8px; transition: 0.3s; position: relative; }
-        .card:hover { background: var(--light-gray); }
-        .card img { width: 100%; aspect-ratio: 1; border-radius: 4px; margin-bottom: 10px; object-fit: cover; }
+        .card:hover { background: var(--light-gray); transform: translateY(-5px); }
+        .card img { width: 100%; aspect-ratio: 1; border-radius: 4px; margin-bottom: 10px; object-fit: cover; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
         .card h3 { margin: 0; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .card p { margin: 5px 0 0; font-size: 0.85rem; color: var(--subtext); }
+        .card p { margin: 5px 0 0; font-size: 0.85rem; color: var(--subtext); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
         .card-link { position: absolute; inset: 0; }
 
         /* MESSAGE D'ERREUR */
         .error-banner {
-            background: #e91429; color: white; padding: 15px; border-radius: 8px;
+            background: #e91429; color: white; padding: 20px; border-radius: 8px;
             text-align: center; margin-bottom: 20px; display: none;
         }
+        .btn-reconnect {
+            background: white; color: black; padding: 8px 16px; border-radius: 20px; 
+            text-decoration: none; font-weight: bold; display: inline-block; margin-top: 10px;
+        }
 
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
@@ -114,104 +112,83 @@
         <div class="header">
             <a href="index.html" class="back-btn">← Retour</a>
             <h2 style="margin:0">Découvertes 🔎</h2>
-            <div style="width: 60px;"></div> <!-- Spacer -->
+            <div style="width: 60px;"></div>
         </div>
 
-        <div id="error-msg" class="error-banner"></div>
+        <div id="error-msg" class="error-banner">
+            <div id="error-text"></div>
+            <a href="index.html" class="btn-reconnect">Se reconnecter</a>
+        </div>
 
         <!-- ONGLETS -->
         <div class="tabs">
             <button class="tab-btn active" onclick="switchTab('track')">🎵 Par Titre</button>
             <button class="tab-btn" onclick="switchTab('artist')">👤 Par Artiste</button>
-            <button class="tab-btn" onclick="switchTab('genre')">🎹 Par Genre</button>
         </div>
 
         <!-- 1. MODE TITRE -->
         <div id="section-track" class="search-section active">
-            <h3>Trouver des musiques comme...</h3>
+            <h3 style="margin-top:0">Trouver des musiques comme...</h3>
+            <p style="color:var(--subtext); font-size:0.9rem; margin-bottom:20px;">Entrez le nom d'un titre.</p>
+            
             <div style="position:relative">
-                <input type="text" id="input-track" placeholder="Tapez le nom d'une musique..." autocomplete="off">
+                <input type="text" id="input-track" placeholder="Ex: Blinding Lights..." autocomplete="off">
                 <div id="results-track" class="results-dropdown"></div>
             </div>
+            
             <!-- Selection display -->
             <div id="selection-track" class="selected-item" style="display:none;">
-                <img id="img-track" src="" alt="" style="width:40px;height:40px;border-radius:4px;">
-                <div>
+                <img id="img-track" src="" alt="">
+                <div style="text-align:left">
                     <div id="txt-track-name" style="font-weight:bold"></div>
                     <div id="txt-track-artist" style="font-size:0.8rem;color:#ccc"></div>
                 </div>
                 <button onclick="clearSelection('track')">✕</button>
             </div>
-            <input type="hidden" id="seed-track-id">
+            <!-- Champs cachés pour Last.fm -->
+            <input type="hidden" id="seed-track-name">
+            <input type="hidden" id="seed-track-artist">
         </div>
 
         <!-- 2. MODE ARTISTE -->
         <div id="section-artist" class="search-section">
-            <h3>Trouver des artistes comme...</h3>
+            <h3 style="margin-top:0">Trouver des artistes comme...</h3>
+            <p style="color:var(--subtext); font-size:0.9rem; margin-bottom:20px;">Entrez le nom d'un artiste.</p>
+            
             <div style="position:relative">
-                <input type="text" id="input-artist" placeholder="Tapez le nom d'un artiste..." autocomplete="off">
+                <input type="text" id="input-artist" placeholder="Ex: Daft Punk..." autocomplete="off">
                 <div id="results-artist" class="results-dropdown"></div>
             </div>
-            <!-- Selection display -->
+            
             <div id="selection-artist" class="selected-item" style="display:none;">
-                <img id="img-artist" src="" alt="" style="width:40px;height:40px;border-radius:50%;">
+                <img id="img-artist" src="" alt="">
                 <div id="txt-artist-name" style="font-weight:bold"></div>
                 <button onclick="clearSelection('artist')">✕</button>
             </div>
-            <input type="hidden" id="seed-artist-id">
+            <input type="hidden" id="seed-artist-name">
         </div>
 
-        <!-- 3. MODE GENRE -->
-        <div id="section-genre" class="search-section">
-            <h3>Explorer un style</h3>
-            <select id="select-genre">
-                <option value="">Chargement des genres...</option>
-            </select>
-        </div>
-
-        <!-- OPTIONS AVANCEES (COMMUN) -->
-        <div class="advanced-options">
-            <details>
-                <summary>Afficher les filtres avancés (Humeur, Énergie...)</summary>
-                <div class="slider-group">
-                    <label><span>Triste</span><span>Joyeux</span></label>
-                    <input type="range" id="opt-valence" min="0" max="1" step="0.1" value="0.5">
-                </div>
-                <div class="slider-group">
-                    <label><span>Calme</span><span>Énergique</span></label>
-                    <input type="range" id="opt-energy" min="0" max="1" step="0.1" value="0.5">
-                </div>
-                <div class="slider-group">
-                    <label><span>Statique</span><span>Dansant</span></label>
-                    <input type="range" id="opt-dance" min="0" max="1" step="0.1" value="0.5">
-                </div>
-            </details>
-        </div>
-
-        <button class="btn-generate" onclick="generate()">Lancer la recherche ✨</button>
+        <button class="btn-generate" onclick="generateHybrid()">Lancer la recherche ✨</button>
 
         <!-- GRID RESULTATS -->
         <div id="grid" class="grid"></div>
-        <div id="loading" style="text-align:center; margin-top:40px; display:none; color:var(--subtext);">Recherche en cours...</div>
+        <div id="loading" style="text-align:center; margin-top:40px; display:none; color:var(--subtext);">
+            Intelligence via Last.fm... Images via Spotify... 🎧
+        </div>
 
     </div>
 
-        <script>
-        // --- 1. RECUPERATION ET NETTOYAGE DU TOKEN (CRUCIAL) ---
+    <script>
+        // CONFIG
+        const LASTFM_KEY = 'ae5109579cce83beacc8cfa66e897433';
+        
+        // --- 1. RECUPERATION TOKEN SPOTIFY (Juste pour la recherche visuelle) ---
         function getCleanToken() {
             let rawToken = localStorage.getItem('spotify_token');
-            
             if (!rawToken) return null;
-
-            // Enlève les guillemets au début et à la fin si présents
-            if (rawToken.startsWith('"') && rawToken.endsWith('"')) {
-                rawToken = rawToken.slice(1, -1);
-            }
-            
-            // Vérifie si le token n'est pas littéralement le mot "undefined" ou "null"
+            if (rawToken.startsWith('"') && rawToken.endsWith('"')) rawToken = rawToken.slice(1, -1);
             if (rawToken === 'undefined' || rawToken === 'null') return null;
-            
-            return rawToken.trim(); // Enlève les espaces vides
+            return rawToken.trim();
         }
 
         const token = getCleanToken();
@@ -221,68 +198,26 @@
 
         function switchTab(tab) {
             currentTab = tab;
-            // Mise à jour visuelle des boutons
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             document.querySelector(`button[onclick="switchTab('${tab}')"]`).classList.add('active');
             
-            // Mise à jour visuelle des sections
             document.querySelectorAll('.search-section').forEach(s => s.classList.remove('active'));
             document.getElementById(`section-${tab}`).classList.add('active');
             
-            // Nettoyage de la grille
             document.getElementById('grid').innerHTML = '';
         }
 
         // --- 3. INITIALISATION ---
         window.addEventListener('load', () => {
-            console.log("Token utilisé :", token); // Pour le debug (F12)
-
             if (!token) {
-                displayError("Erreur d'authentification : Aucun token valide trouvé. Veuillez retourner sur l'accueil pour vous reconnecter.");
+                displayError("Erreur : Connectez-vous via l'accueil pour voir les images.");
             } else {
                 setupAutocomplete('track');
                 setupAutocomplete('artist');
-                loadGenres(); // C'est souvent ici que ça bloquait
             }
         });
 
-        // --- 4. CHARGEMENT DES GENRES ---
-        async function loadGenres() {
-            try {
-                const res = await fetch('https://api.spotify.com/v1/recommendations/available-genre-seeds', {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-
-                if (!res.ok) {
-                    // Si erreur 401, c'est l'expiration
-                    if (res.status === 401) {
-                        displayError("Votre session a expiré. Cliquez sur 'Se reconnecter'.");
-                        return;
-                    }
-                    throw new Error(`Statut HTTP: ${res.status}`);
-                }
-                
-                const data = await res.json();
-                
-                const select = document.getElementById('select-genre');
-                // On garde l'option par défaut et on ajoute les autres
-                select.innerHTML = '<option value="">-- Choisir un style --</option>';
-                
-                data.genres.forEach(g => {
-                    const opt = document.createElement('option');
-                    opt.value = g;
-                    // Première lettre en majuscule
-                    opt.textContent = g.charAt(0).toUpperCase() + g.slice(1);
-                    select.appendChild(opt);
-                });
-
-            } catch (e) {
-                console.error("Erreur Genres:", e);
-                // On n'affiche pas l'erreur à l'utilisateur pour les genres, c'est pas bloquant pour les autres onglets
-            }
-        }
-
-        // --- 5. RECHERCHE (AUTOCOMPLETE) ---
+        // --- 4. RECHERCHE SPOTIFY (Juste pour sélectionner proprement) ---
         function setupAutocomplete(type) {
             const input = document.getElementById(`input-${type}`);
             const results = document.getElementById(`results-${type}`);
@@ -292,11 +227,9 @@
                 clearTimeout(timer);
                 const query = e.target.value;
                 if(query.length < 2) { results.style.display = 'none'; return; }
-
                 timer = setTimeout(() => { searchSpotify(query, type); }, 400);
             });
 
-            // Fermer si clic dehors
             document.addEventListener('click', (e) => {
                 if(!e.target.closest(`#section-${type}`)) results.style.display = 'none';
             });
@@ -308,7 +241,7 @@
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 
-                if (!res.ok) return; // On ignore silencieusement les erreurs de frappe rapide
+                if (!res.ok) return; 
 
                 const data = await res.json();
                 const items = (type === 'track') ? data.tracks.items : data.artists.items;
@@ -321,10 +254,7 @@
             div.innerHTML = '';
             div.style.display = 'block';
 
-            if(items.length === 0) {
-                div.style.display = 'none';
-                return;
-            }
+            if(items.length === 0) { div.style.display = 'none'; return; }
 
             items.forEach(item => {
                 const row = document.createElement('div');
@@ -336,20 +266,22 @@
 
                 let subText = (type === 'track') ? item.artists[0].name : 'Artiste';
 
-                row.innerHTML = `
-                    <img src="${imgUrl}">
-                    <div>
-                        <div style="font-weight:bold; font-size:0.9rem">${item.name}</div>
-                        <div style="font-size:0.8em; color:#bbb">${subText}</div>
-                    </div>
-                `;
+                row.innerHTML = `<img src="${imgUrl}"><div><div style="font-weight:bold; font-size:0.9rem">${item.name}</div><div style="font-size:0.8em; color:#bbb">${subText}</div></div>`;
+                
+                // Important : on stocke les NOMS TEXTE pour Last.fm
                 row.onclick = () => selectItem(item, type, imgUrl, subText);
                 div.appendChild(row);
             });
         }
 
         function selectItem(item, type, imgUrl, subText) {
-            document.getElementById(`seed-${type}-id`).value = item.id;
+            // Pour Last.fm, on a besoin du nom exact + artiste
+            if(type === 'track') {
+                document.getElementById('seed-track-name').value = item.name;
+                document.getElementById('seed-track-artist').value = item.artists[0].name;
+            } else {
+                document.getElementById('seed-artist-name').value = item.name;
+            }
             
             // UI Switch
             document.getElementById(`results-${type}`).style.display = 'none';
@@ -369,93 +301,133 @@
         }
 
         function clearSelection(type) {
-            document.getElementById(`seed-${type}-id`).value = '';
+             // Reset values
+            if(type === 'track') {
+                document.getElementById('seed-track-name').value = '';
+                document.getElementById('seed-track-artist').value = '';
+            } else {
+                document.getElementById('seed-artist-name').value = '';
+            }
+
             document.getElementById(`selection-${type}`).style.display = 'none';
             document.getElementById(`input-${type}`).style.display = 'inline-block';
             document.getElementById(`input-${type}`).value = '';
             document.getElementById(`input-${type}`).focus();
         }
 
-        // --- 6. GENERATION FINALE ---
-        async function generate() {
+        // --- 5. GENERATION HYBRIDE (LAST.FM -> SPOTIFY) ---
+        async function generateHybrid() {
             const grid = document.getElementById('grid');
             const loader = document.getElementById('loading');
             const errorDiv = document.getElementById('error-msg');
             
             grid.innerHTML = '';
             errorDiv.style.display = 'none';
-            
-            // Validation
-            let url = 'https://api.spotify.com/v1/recommendations?limit=24&market=FR';
-            let hasSeed = false;
-
-            if (currentTab === 'track') {
-                const id = document.getElementById('seed-track-id').value;
-                if(id) { url += `&seed_tracks=${id}`; hasSeed = true; }
-            } else if (currentTab === 'artist') {
-                const id = document.getElementById('seed-artist-id').value;
-                if(id) { url += `&seed_artists=${id}`; hasSeed = true; }
-            } else if (currentTab === 'genre') {
-                const genre = document.getElementById('select-genre').value;
-                if(genre) { url += `&seed_genres=${genre}`; hasSeed = true; }
-            }
-
-            if(!hasSeed) {
-                alert("Attention : Vous devez sélectionner une musique, un artiste ou un genre pour lancer la recherche.");
-                return;
-            }
-
-            // Ajout des Sliders
-            url += `&target_valence=${document.getElementById('opt-valence').value}`;
-            url += `&target_energy=${document.getElementById('opt-energy').value}`;
-            url += `&target_danceability=${document.getElementById('opt-dance').value}`;
-
             loader.style.display = 'block';
 
             try {
-                const res = await fetch(url, {
-                    headers: { 'Authorization': `Bearer ${token}` }
+                let similarItems = [];
+
+                // A. APPEL LAST.FM (Pour l'intelligence)
+                if (currentTab === 'track') {
+                    const trackName = document.getElementById('seed-track-name').value;
+                    const artistName = document.getElementById('seed-track-artist').value;
+                    
+                    if(!trackName) throw new Error("Sélectionnez un titre.");
+
+                    const res = await fetch(`https://ws.audioscrobbler.com/2.0/?method=track.getsimilar&artist=${encodeURIComponent(artistName)}&track=${encodeURIComponent(trackName)}&api_key=${LASTFM_KEY}&format=json&limit=15`);
+                    const data = await res.json();
+                    
+                    if(data.error) throw new Error(data.message);
+                    if(!data.similartracks || !data.similartracks.track.length) throw new Error("Aucun résultat similaire trouvé sur Last.fm.");
+                    
+                    // On prépare la liste "Artiste - Titre"
+                    similarItems = data.similartracks.track.map(t => ({
+                        query: `track:${t.name} artist:${t.artist.name}`,
+                        name: t.name,
+                        artist: t.artist.name
+                    }));
+
+                } else {
+                    const artistName = document.getElementById('seed-artist-name').value;
+                    if(!artistName) throw new Error("Sélectionnez un artiste.");
+
+                    const res = await fetch(`https://ws.audioscrobbler.com/2.0/?method=artist.getsimilar&artist=${encodeURIComponent(artistName)}&api_key=${LASTFM_KEY}&format=json&limit=15`);
+                    const data = await res.json();
+
+                    if(data.error) throw new Error(data.message);
+                    if(!data.similarartists || !data.similarartists.artist.length) throw new Error("Aucun artiste similaire trouvé.");
+
+                    similarItems = data.similarartists.artist.map(a => ({
+                        query: `artist:${a.name}`,
+                        name: a.name
+                    }));
+                }
+
+                // B. APPEL SPOTIFY (Pour l'affichage et la lecture)
+                // On doit faire une recherche pour CHAQUE résultat Last.fm pour avoir son image et ID Spotify
+                // Pour aller vite, on lance toutes les requêtes en parallèle (Promise.all)
+                
+                const spotifyPromises = similarItems.map(async (item) => {
+                    try {
+                        const searchRes = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(item.query)}&type=${currentTab}&limit=1`, {
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        });
+                        const searchData = await searchRes.json();
+                        
+                        // On prend le premier résultat
+                        if (currentTab === 'track' && searchData.tracks.items.length > 0) {
+                            return searchData.tracks.items[0];
+                        } else if (currentTab === 'artist' && searchData.artists.items.length > 0) {
+                            return searchData.artists.items[0];
+                        }
+                        return null;
+                    } catch(e) { return null; }
                 });
 
-                if (res.status === 401) {
-                    displayError("Votre session a expiré.");
-                    return;
-                }
+                const spotifyResults = await Promise.all(spotifyPromises);
                 
-                if (!res.ok) {
-                    const errTxt = await res.text();
-                    throw new Error("Erreur Spotify: " + errTxt);
-                }
+                // On filtre les nuls (ceux qu'on n'a pas trouvés sur Spotify)
+                const finalTracks = spotifyResults.filter(i => i !== null);
                 
-                const data = await res.json();
-                
-                // Si pas d'erreur mais tracks vide
-                if (!data.tracks || data.tracks.length === 0) {
-                     grid.innerHTML = '<p style="text-align:center; grid-column:1/-1">Aucun résultat trouvé. Essayez de changer de style ou de titre de référence.</p>';
-                } else {
-                    displayTracks(data.tracks);
-                }
+                displayResults(finalTracks);
 
             } catch (e) {
                 console.error(e);
-                displayError("Erreur technique : " + e.message);
+                displayError("Erreur : " + e.message);
             } finally {
                 loader.style.display = 'none';
             }
         }
 
-        function displayTracks(tracks) {
+        function displayResults(items) {
             const grid = document.getElementById('grid');
             
-            tracks.forEach(track => {
-                const img = track.album.images[0] ? track.album.images[0].url : '';
+            if(items.length === 0) {
+                grid.innerHTML = '<p style="text-align:center; grid-column:1/-1">Aucun résultat correspondant trouvé sur Spotify.</p>';
+                return;
+            }
+
+            items.forEach(item => {
+                let imgUrl = 'https://via.placeholder.com/150';
+                let title = item.name;
+                let subtitle = '';
+
+                if (currentTab === 'track') {
+                    if(item.album.images.length) imgUrl = item.album.images[0].url;
+                    subtitle = item.artists.map(a=>a.name).join(', ');
+                } else {
+                    if(item.images.length) imgUrl = item.images[0].url;
+                    subtitle = 'Artiste';
+                }
+
                 const div = document.createElement('div');
                 div.className = 'card';
                 div.innerHTML = `
-                    <a href="${track.uri}" class="card-link"></a>
-                    <img src="${img}" loading="lazy">
-                    <h3>${track.name}</h3>
-                    <p>${track.artists.map(a=>a.name).join(', ')}</p>
+                    <a href="${item.uri}" class="card-link"></a>
+                    <img src="${imgUrl}" loading="lazy">
+                    <h3>${title}</h3>
+                    <p>${subtitle}</p>
                 `;
                 grid.appendChild(div);
             });
@@ -467,15 +439,12 @@
             if(txt) txt.textContent = msg;
             else el.textContent = msg;
             
-            // Ajoute le bouton retour si pas présent
             if(!el.innerHTML.includes('btn-reconnect')) {
                  el.innerHTML += '<br><a href="index.html" class="btn-reconnect">Se reconnecter</a>';
             }
-            
             el.style.display = 'block';
             document.getElementById('loading').style.display = 'none';
         }
     </script>
-
 </body>
 </html>
