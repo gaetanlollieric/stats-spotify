@@ -412,288 +412,736 @@
 
 
     <script>
-        // --- 1. RECUPERATION ET NETTOYAGE DU TOKEN (CRUCIAL) ---
-        function getCleanToken() {
-            let rawToken = localStorage.getItem('spotify_token');
-            
-            if (!rawToken) return null;
+    // --- 1. CONFIGURATION ---
+    const clientId = '1f8e5a30d7d4470aa41dd7ba69e4a94f';
+    const redirectUri = 'https://gaetanlollieric.github.io/stats-spotify/index.html';
+    const SUPABASE_URL = 'https://kvrwymmsgwstvyqmscuy.supabase.co'; 
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2cnd5bW1zZ3dzdHZ5cW1zY3V5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3NjAxODksImV4cCI6MjA3OTMzNjE4OX0.XNJOD5MzOaM8u_tRuvXZvx2Q_mHUTbk-mAbUFnoU3H4'; 
 
-            // Enlève les guillemets au début et à la fin si présents
-            if (rawToken.startsWith('"') && rawToken.endsWith('"')) {
-                rawToken = rawToken.slice(1, -1);
+    const { createClient } = supabase;
+    const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+       const scopes = [
+      'user-read-private',
+      'user-read-email',
+      'user-top-read',
+      'user-read-recently-played',
+      'user-read-playback-state',
+      'user-modify-playback-state'
+    ].join(' ');
+
+    
+    let currentToken = null;
+    let currentUserId = null;
+    let displayedUserId = null;
+    
+    // DATA
+    let allHistoryData = []; 
+    let allGenres = new Set();
+    let allUsersList = []; 
+    
+    // FILTRES à‰TAT
+    let currentGenre = 'all';
+    let currentPeriod = 'all'; 
+    let currentSpecificValue = null; 
+    let currentChartMode = 'daily'; 
+    let currentDayFilter = null; 
+    let currentHeatmapYear = new Date().getFullYear(); // Année par défaut pour la heatmap
+
+    let currentTop10URIs = []; 
+
+    // --- INIT ---
+    // Fonction pour avoir la date locale (YYYY-MM-DD) sans décalage UTC
+    function getLocalDateString(dateObj) {
+        const offset = dateObj.getTimezoneOffset() * 60000;
+        const localTime = new Date(dateObj.getTime() - offset);
+        return localTime.toISOString().split('T')[0];
+    }
+
+        
+    function generateRandomString(l){let t='';const p='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';for(let i=0;i<l;i++)t+=p.charAt(Math.floor(Math.random()*p.length));return t;}
+    async function generateCodeChallenge(v){const e=new TextEncoder();const d=e.encode(v);const dig=await window.crypto.subtle.digest('SHA-256',d);return btoa(String.fromCharCode(...new Uint8Array(dig))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/, '');}
+    
+    window.addEventListener('load', async () => {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
+    
+      if (code) {
+        // 1) On traite UNE SEULE FOIS le callback OAuth
+        await handleSpotifyCallback(code);
+    
+        // 2) On enlève ?code= de l'URL pour ne pas retraiter au reload
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } else {
+        // 3) Auto-session si token déjà en localStorage (pas de redirection ici)
+        const savedToken = localStorage.getItem('spotify_token');
+        const savedTokenTime = localStorage.getItem('spotify_token_time');
+        const savedUserId = localStorage.getItem('my_spotify_id');
+    
+        if (savedToken && savedTokenTime && savedUserId) {
+          const age = Date.now() - parseInt(savedTokenTime, 10);
+          const ONE_HOUR = 3600000;
+    
+          if (age < ONE_HOUR) {
+            currentToken = savedToken;
+            currentUserId = savedUserId;
+            displayedUserId = savedUserId;
+    
+            document.getElementById('login-section').classList.add('hidden');
+            document.getElementById('dashboard').classList.remove('hidden');
+    
+            const savedName = localStorage.getItem('displayname');
+            if (savedName) {
+              document.getElementById('user-display-name').innerText = savedName;
             }
-            
-            // Vérifie si le token n'est pas littéralement le mot "undefined" ou "null"
-            if (rawToken === 'undefined' || rawToken === 'null') return null;
-            
-            return rawToken.trim(); // Enlève les espaces vides
+    
+            await loadUsersList();
+            await loadSupabaseStats(currentUserId);
+            await loadSpotifyApiStats(currentToken, 'short_term');
+            return;
+          }
         }
-
-        const token = getCleanToken();
-
-        // --- 2. NAVIGATION ---
-        let currentTab = 'track';
-
-        function switchTab(tab) {
-            currentTab = tab;
-            // Mise à jour visuelle des boutons
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            document.querySelector(`button[onclick="switchTab('${tab}')"]`).classList.add('active');
+      }
             
-            // Mise à jour visuelle des sections
-            document.querySelectorAll('.search-section').forEach(s => s.classList.remove('active'));
-            document.getElementById(`section-${tab}`).classList.add('active');
+        // Init sélecteur année heatmap
+        const yearSel = document.getElementById('heatmap-year-select');
+        yearSel.value = currentHeatmapYear;
+        yearSel.onchange = (e) => {
+            currentHeatmapYear = parseInt(e.target.value);
+            renderHeatmap(allHistoryData, currentHeatmapYear);
+        };
+    });
+        
+    document.getElementById('login-btn').addEventListener('click', async () => {
+      // (optionnel) nettoyer l'ancienne session
+      localStorage.removeItem('spotify_token');
+      localStorage.removeItem('spotify_token_time');
+      localStorage.removeItem('my_spotify_id');
+    
+      const verifier = generateRandomString(128);
+      const challenge = await generateCodeChallenge(verifier);
+      localStorage.setItem('verifier', verifier);
+    
+      const params = new URLSearchParams({
+        client_id: clientId,
+        response_type: 'code',
+        redirect_uri: redirectUri,
+        scope: scopes,
+        code_challenge_method: 'S256',
+        code_challenge: challenge,
+        // NE PAS METTRE show_dialog=true si tu ne veux pas le consentement à chaque fois
+      });
+    
+      document.location = 'https://accounts.spotify.com/authorize?' + params.toString();
+    });
+
+    async function handleSpotifyCallback(code) {
+        const verifier = localStorage.getItem("verifier");
+        const body = await fetch("https://accounts.spotify.com/api/token", {
+            method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ client_id: clientId, grant_type: 'authorization_code', code: code, redirect_uri: redirectUri, code_verifier: verifier }),
+        });
+        const response = await body.json();
+        
+        if (response.access_token) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+            document.getElementById('login-section').classList.add('hidden');
+            document.getElementById('dashboard').classList.remove('hidden');
             
-            // Nettoyage de la grille
-            document.getElementById('grid').innerHTML = '';
+            currentToken = response.access_token;
+
+            const resProfile = await fetch("https://api.spotify.com/v1/me", { headers: { Authorization: `Bearer ${currentToken}` } });
+            const profile = await resProfile.json();
+            localStorage.setItem('displayname', profile.display_name);
+
+
+            // Après avoir récupéré 'response.access_token' et 'profile'
+            localStorage.setItem('spotify_token', response.access_token);
+            localStorage.setItem('spotify_token_time', Date.now().toString());
+            localStorage.setItem('my_spotify_id', profile.id);
+            
+            currentUserId = profile.id;
+
+            localStorage.setItem('my_spotify_id', currentUserId);
+            
+            displayedUserId = profile.id;
+            document.getElementById('user-display-name').innerText = profile.display_name;
+
+            if (response.refresh_token) {
+                await sb.from('users').upsert({
+                    spotify_id: profile.id, refresh_token: response.refresh_token, display_name: profile.display_name, last_sync: new Date()
+                });
+            }
+
+            await loadUsersList();
+            loadSupabaseStats(currentUserId);
+            loadSpotifyApiStats(currentToken, 'short_term');
         }
+    }
 
-        // --- 3. INITIALISATION ---
-        window.addEventListener('load', () => {
-            console.log("Token utilisé :", token); // Pour le debug (F12)
+    async function loadUsersList() {
+        const { data } = await sb.from('users').select('spotify_id, display_name');
+        if (data) { allUsersList = data; setupUserSelector(); }
+    }
 
-            if (!token) {
-                displayError("Erreur d'authentification : Aucun token valide trouvé. Veuillez retourner sur l'accueil pour vous reconnecter.");
+    async function loadSupabaseStats(targetId) {
+        if (!targetId) return;
+        document.getElementById('db-total-tracks').innerText = "Chargement...";
+        
+        allHistoryData = []; allGenres = new Set(); currentGenre = 'all'; 
+        currentDayFilter = null; currentChartMode = 'daily'; 
+
+        // MODIFIE CELA dans loadSupabaseStats
+        const { data, error } = await sb
+            .from('listening_history')
+            .select(`played_at, tracks (spotify_id, name, duration_ms, artists (name, genres))`) // J'ai retiré valence, energy, etc.
+            .eq('user_id', targetId)
+            .order('played_at', { ascending: false })
+            .limit(50000); // Ou ta logique de pagination
+
+
+        if (error) { console.error(error); document.getElementById('db-total-tracks').innerText = "Erreur"; return; }
+        if (!data || data.length === 0) { renderDashboard([]); return; }
+
+        allHistoryData = data.map(item => ({
+            played_at: new Date(item.played_at),
+            track_id: item.tracks?.spotify_id,
+            track_name: item.tracks?.name || "Inconnu",
+            artist_name: item.tracks?.artists?.name || "Inconnu",
+            duration_ms: item.tracks?.duration_ms || 0,
+            genres: item.tracks?.artists?.genres || []
+        }));
+
+        allGenres = new Set();
+        allHistoryData.forEach(d => { if(d.genres) d.genres.forEach(g => allGenres.add(g)); });
+
+        setupTopControls();
+        updateDashboard();
+        
+        renderHeatmap(allHistoryData, currentHeatmapYear);
+    }
+
+    // --- TOP CONTROLS BAR ---
+    function setupTopControls() {
+        let topBar = document.getElementById('top-controls-bar');
+        if (!topBar) {
+            topBar = document.createElement('div');
+            topBar.id = 'top-controls-bar';
+            Object.assign(topBar.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' });
+            const statsGrid = document.querySelector('.stats-grid');
+            statsGrid.parentNode.insertBefore(topBar, statsGrid);
+        }
+        topBar.innerHTML = '';
+
+        // Genres
+        const select = document.createElement('select');
+        select.className = 'filter-btn';
+        Object.assign(select.style, { backgroundColor: '#181818', color: 'white', border: '1px solid #555' });
+        select.innerHTML = '<option value="all">Tous les genres</option>';
+        Array.from(allGenres).sort().forEach(g => {
+            select.innerHTML += `<option value="${g}">${g.charAt(0).toUpperCase() + g.slice(1)}</option>`;
+        });
+        select.value = currentGenre;
+        select.addEventListener('change', (e) => { currentGenre = e.target.value; updateDashboard(); });
+
+        // Périodes
+        const periodGroup = document.createElement('div');
+        periodGroup.style.display = 'flex'; periodGroup.style.gap = '5px'; periodGroup.style.alignItems = 'center';
+
+        const createBtn = (id, label) => {
+            const btn = document.createElement('button');
+            btn.className = 'filter-btn';
+            if (currentPeriod === id) btn.classList.add('active');
+            btn.innerText = label;
+            btn.onclick = () => {
+                resetSpecificInputs();
+                currentPeriod = id;
+                btn.classList.add('active');
+                updateDashboard();
+            };
+            periodGroup.appendChild(btn);
+        };
+
+        createBtn('7', '7 Jours');
+        createBtn('30', '30 Jours');
+        createBtn('all', 'Tout');
+
+                // ... (le début de setupTopControls reste pareil)
+
+        const dateInput = document.createElement('input');
+        dateInput.type = 'date'; 
+        dateInput.id = 'date-picker';
+        Object.assign(dateInput.style, { 
+            backgroundColor: '#181818', 
+            color: 'white', 
+            border: '1px solid #555', 
+            padding: '5px', 
+            borderRadius: '5px', 
+            cursor: 'pointer',
+            fontFamily: 'inherit' // Pour garder la police Spotify
+        });
+
+        // LA CORRECTION EST ICI :
+        dateInput.addEventListener('change', (e) => {
+            const val = e.target.value;
+            if (val) {
+                // 1. On désactive les autres boutons (7j, 30j...)
+                document.querySelectorAll('.controls button, #top-controls-bar button').forEach(b => b.classList.remove('active'));
+                
+                // 2. On définit le mode "Date Spécifique"
+                currentPeriod = 'specific_date';
+                currentSpecificValue = val;
+                
+                // 3. Feedback visuel
+                dateInput.style.borderColor = 'var(--spotify-green)';
+                
+                // 4. On reset le filtre "Jour de la semaine" du graphique pour éviter les conflits
+                currentDayFilter = null;
+                switchChartMode('daily'); 
+
+                // 5. On lance la mise à  jour
+                updateDashboard();
             } else {
-                setupAutocomplete('track');
-                setupAutocomplete('artist');
-                loadGenres(); // C'est souvent ici que ça bloquait
+                // Si l'utilisateur efface la date, on revient à  "7 jours" par défaut
+                dateInput.style.borderColor = '#555';
+                currentPeriod = '7';
+                updateDashboard();
             }
         });
 
-        // --- 4. CHARGEMENT DES GENRES ---
-        async function loadGenres() {
-            try {
-                const res = await fetch('https://api.spotify.com/v1/recommendations/available-genre-seeds', {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
+        periodGroup.appendChild(dateInput);
+        topBar.appendChild(select);
+        topBar.appendChild(periodGroup);
+    }
 
-                if (!res.ok) {
-                    // Si erreur 401, c'est l'expiration
-                    if (res.status === 401) {
-                        displayError("Votre session a expiré. Cliquez sur 'Se reconnecter'.");
-                        return;
+    function resetSpecificInputs() {
+        document.querySelectorAll('.controls button, #top-controls-bar button').forEach(b => b.classList.remove('active'));
+        const d = document.getElementById('date-picker'); if(d) { d.value=''; d.style.borderColor='#555'; }
+        currentDayFilter = null;
+        switchChartMode('daily'); 
+    }
+
+    // --- CORE FILTER ---
+    function updateDashboard() {
+        const now = new Date();
+        let filtered = allHistoryData;
+
+        // 1. Filtre Date Spécifique (via Heatmap ou Calendrier)
+        if (currentPeriod === 'specific_date' && currentSpecificValue) {
+            // CORRECTION ICI : On compare avec la date locale
+            filtered = filtered.filter(d => getLocalDateString(d.played_at) === currentSpecificValue);
+        } 
+        // 2. Filtres Périodes classiques
+        else if (currentPeriod === '7') {
+            const cutoff = new Date(); cutoff.setDate(now.getDate() - 7);
+            filtered = filtered.filter(d => d.played_at >= cutoff);
+        } 
+        else if (currentPeriod === '30') {
+            const cutoff = new Date(); cutoff.setDate(now.getDate() - 30);
+            filtered = filtered.filter(d => d.played_at >= cutoff);
+        }
+
+        // 3. Filtre Genre
+        if (currentGenre !== 'all') {
+            filtered = filtered.filter(d => d.genres.includes(currentGenre));
+        }
+
+        // 4. Filtre Jour de la semaine (Barres du graph)
+        if (currentDayFilter !== null) {
+            filtered = filtered.filter(d => d.played_at.getDay() === currentDayFilter);
+        }
+
+        renderDashboard(filtered);
+    }
+
+    // --- RENDER ---
+    function renderDashboard(data) {
+        const count = data.length;
+        document.getElementById('db-total-tracks').innerText = count;
+
+        let totalMs = data.reduce((acc, item) => acc + item.duration_ms, 0);
+        let totalMinutes = Math.floor(totalMs / 60000);
+        let hours = Math.floor(totalMinutes / 60);
+        let minutes = totalMinutes % 60;
+        document.getElementById('db-total-time').innerText = hours > 0 ? `${hours}h ${minutes}min` : `${minutes}min`;
+
+        const uniqueSet = new Set(data.map(d => d.track_id));
+        document.getElementById('db-unique-tracks').innerText = uniqueSet.size;
+
+        const titleEl = document.getElementById('top-tracks-title');
+        let info = `(${count} écoutes)`;
+        if (currentDayFilter !== null) {
+            const days = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+            info += `${days[currentDayFilter]}`;
+        }
+        titleEl.innerText = `Top 10 ${currentGenre!=='all'?currentGenre:''} ${info}`;
+
+        renderChart(data);
+
+        const trackCounts = {}; const trackInfos = {}; 
+        data.forEach(t => {
+            const key = `${t.track_name}###${t.artist_name}`;
+            trackCounts[key] = (trackCounts[key] || 0) + 1;
+            if (!trackInfos[key]) trackInfos[key] = t.track_id;
+        });
+        
+        const sortedTracks = Object.entries(trackCounts).sort(([,a], [,b]) => b - a).slice(0, 10);
+        currentTop10URIs = sortedTracks.map(([key]) => trackInfos[key]).filter(id => id).map(id => `spotify:track:${id}`);
+
+        const tbody = document.getElementById('db-top-tracks');
+        tbody.innerHTML = '';
+        if (!sortedTracks.length) {
+            tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding:20px;">Rien trouvé...</td></tr>`;
+        } else {
+            sortedTracks.forEach(([key, c]) => {
+                const [name, artist] = key.split('###');
+                const trackId = trackInfos[key];
+        
+                tbody.innerHTML += `
+                    <tr ${trackId ? `onclick="window.location.href='track.html?track_id=${encodeURIComponent(trackId)}'"` : ''} 
+                        style="cursor:${trackId ? 'pointer' : 'default'};">
+                        <td><strong>${name}</strong></td>
+                        <td>${artist || 'Inconnu'}</td>
+                        <td><span class="count-badge">${c}</span></td>
+                    </tr>
+                `;
+            });
+        }
+
+
+
+        setupPlayButton();
+        renderLoyalty(data);     // Affiche la Fidélité
+    }
+        
+    // --- HEATMAP GITHUB STYLE (CORRECTION 31 DÉCEMBRE) ---
+    function renderHeatmap(data, year) {
+        const grid = document.getElementById('heatmap-grid');
+        if (!grid) return;
+        grid.innerHTML = '';
+
+        const counts = {};
+        let maxCount = 0;
+
+        // 1. Filtrer et compter
+        data.forEach(d => {
+            if (d.played_at.getFullYear() === year) {
+                const dateKey = getLocalDateString(d.played_at);
+                counts[dateKey] = (counts[dateKey] || 0) + 1;
+                if (counts[dateKey] > maxCount) maxCount = counts[dateKey];
+            }
+        });
+
+        const startDate = new Date(year, 0, 1);
+        
+        // Calcul du nombre de jours exact dans l'année (365 ou 366)
+        const isLeap = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+        const daysInYear = isLeap ? 366 : 365;
+
+        // Alignement Lundi (0 cases vides si lundi, 6 si dimanche)
+        let startDay = startDate.getDay(); 
+        let dayOffset = startDay === 0 ? 6 : startDay - 1; 
+
+        // Cases vides début
+        for(let i=0; i < dayOffset; i++) {
+            const empty = document.createElement('div');
+            empty.className = 'heatmap-cell level-0'; 
+            empty.style.opacity = '0'; 
+            grid.appendChild(empty);
+        }
+
+        // Boucle sur le nombre exact de jours
+        let current = new Date(startDate);
+        
+        for (let i = 0; i < daysInYear; i++) {
+            // On recrée la date à chaque itération pour éviter les dérives
+            // On ajoute 'i' jours au 1er janvier
+            const dateCursor = new Date(year, 0, 1 + i);
+            
+            const dateKey = getLocalDateString(dateCursor);
+            const count = counts[dateKey] || 0;
+            
+            const cell = document.createElement('div');
+            
+            let level = 0;
+            if (count > 0) {
+                const ratio = count / (maxCount || 1); 
+                if (ratio < 0.25) level = 1;
+                else if (ratio < 0.5) level = 2;
+                else if (ratio < 0.75) level = 3;
+                else level = 4;
+            }
+            
+            cell.className = `heatmap-cell level-${level}`;
+            cell.title = `${dateKey}: ${count} écoutes`;
+            
+            (function(clickedDate) {
+                cell.onclick = () => {
+                    const dateInput = document.getElementById('date-picker');
+                    if(dateInput) {
+                        dateInput.value = clickedDate;
+                        currentPeriod = 'specific_date';
+                        currentSpecificValue = clickedDate;
+                        resetSpecificInputs();
+                        dateInput.style.borderColor = '#1ED760';
+                        updateDashboard();
                     }
-                    throw new Error(`Statut HTTP: ${res.status}`);
+                };
+            })(dateKey);
+
+            grid.appendChild(cell);
+        }
+    }
+
+
+
+    // --- CHART MANAGER ---
+    function switchChartMode(mode) {
+        currentChartMode = mode;
+        document.getElementById('btn-chart-daily').classList.toggle('active', mode === 'daily');
+        document.getElementById('btn-chart-hourly').classList.toggle('active', mode === 'hourly');
+        if (mode === 'daily') { currentDayFilter = null; updateDashboard(); }
+        else { updateDashboard(); }
+    }
+
+    function renderChart(data) {
+        const ctx = document.getElementById('mainChart').getContext('2d');
+        if (window.myChart instanceof Chart) window.myChart.destroy();
+
+        let labels = [];
+        let counts = [];
+        let backgroundColors = [];
+        let barColor = (displayedUserId === currentUserId) ? '#3b82f6' : '#e91429';
+
+        if (currentChartMode === 'hourly') {
+            labels = [...Array(24).keys()].map(h => h + 'h');
+            counts = new Array(24).fill(0);
+            data.forEach(d => counts[d.played_at.getHours()]++);
+            backgroundColors = labels.map(() => barColor);
+        } else {
+            labels = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+            counts = new Array(7).fill(0);
+            data.forEach(d => {
+                let jsDay = d.played_at.getDay(); 
+                let index = jsDay === 0 ? 6 : jsDay - 1; 
+                counts[index]++;
+            });
+            backgroundColors = labels.map(() => barColor);
+        }
+
+        window.myChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{ label: 'Titres', data: counts, backgroundColor: backgroundColors, borderRadius: 4 }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: {display:false} },
+                scales: { x: {grid:{display:false}, ticks:{color:'#b3b3b3'}}, y: {grid:{color:'#333'}, ticks:{color:'#b3b3b3'}} },
+                onClick: (evt, elements) => {
+                    if (elements.length > 0 && currentChartMode === 'daily') {
+                        const index = elements[0].index;
+                        const mapIndexToJs = [1, 2, 3, 4, 5, 6, 0];
+                        currentDayFilter = mapIndexToJs[index];
+                        switchChartMode('hourly');
+                    }
                 }
-                
-                const data = await res.json();
-                
-                const select = document.getElementById('select-genre');
-                // On garde l'option par défaut et on ajoute les autres
-                select.innerHTML = '<option value="">-- Choisir un style --</option>';
-                
-                data.genres.forEach(g => {
-                    const opt = document.createElement('option');
-                    opt.value = g;
-                    // Première lettre en majuscule
-                    opt.textContent = g.charAt(0).toUpperCase() + g.slice(1);
-                    select.appendChild(opt);
+            }
+        });
+    }
+
+    // --- BOUTON PLAY ---
+    function setupPlayButton() {
+        let playBtn = document.getElementById('play-top-10-btn');
+        if (!playBtn) {
+            const tableCard = document.querySelector('.track-table').closest('.card');
+            playBtn = document.createElement('button');
+            playBtn.id = 'play-top-10-btn';
+            playBtn.className = 'btn-spotify';
+            playBtn.style.marginTop = '20px'; playBtn.style.width = '100%'; playBtn.style.fontSize = '1rem';
+            playBtn.onclick = playTop10;
+            tableCard.appendChild(playBtn);
+        }
+        
+        if (currentTop10URIs.length > 0) {
+            playBtn.style.display = 'block';
+            playBtn.innerText = displayedUserId === currentUserId 
+                ? `Lancer ce Top 10 (${currentTop10URIs.length})` 
+                : `Ajouter à ma file d'attente`;
+            playBtn.style.backgroundColor = displayedUserId === currentUserId ? '#1DB954' : '#e91429';
+        } else { playBtn.style.display = 'none'; }
+    }
+
+    async function playTop10() {
+        if (!currentToken) return alert("Veuillez vous reconnecter.");
+        if (!currentTop10URIs.length) return alert("Rien à  jouer.");
+
+        const btn = document.getElementById('play-top-10-btn');
+        const originalText = btn.innerText;
+        btn.innerText = "Connexion appareil...";
+
+        try {
+            const dRes = await fetch('https://api.spotify.com/v1/me/player/devices', { headers: { Authorization: `Bearer ${currentToken}` } });
+            const dData = await dRes.json();
+            const devices = dData.devices || [];
+            if (!devices.length) return alert("Désolé aucun appareil en cours de lecture. Lance Spotify !");
+            
+            const targetDevice = devices.find(d => d.is_active) || devices[0];
+            
+            let count = 0;
+            for (const uri of currentTop10URIs) {
+                const r = await fetch(`https://api.spotify.com/v1/me/player/queue?uri=${uri}&device_id=${targetDevice.id}`, {
+                    method: 'POST', headers: { Authorization: `Bearer ${currentToken}` }
                 });
-
-            } catch (e) {
-                console.error("Erreur Genres:", e);
-                // On n'affiche pas l'erreur à l'utilisateur pour les genres, c'est pas bloquant pour les autres onglets
+                if(r.ok) count++;
             }
+            btn.innerText = `${count} titres ajoutés !`;
+        } catch (e) { console.error(e); alert("Erreur technique."); } 
+        finally { setTimeout(() => btn.innerText = originalText, 3000); }
+    }
+
+    // --- USER SELECTOR (CORRIGà‰) ---
+    function setupUserSelector() {
+        let bar = document.getElementById('user-select-bar');
+        if (!bar) {
+            bar = document.createElement('div'); bar.id = 'user-select-bar'; bar.style.textAlign = 'center'; bar.style.marginBottom = '20px';
+            document.getElementById('dashboard').insertBefore(bar, document.getElementById('dashboard').firstChild);
         }
+        bar.innerHTML = `<label style="color:#b3b3b3; margin-right:10px;">Profil :</label><select id="user-switcher" style="background:#181818; color:white; padding:8px; border-radius:20px; border:1px solid #555;"></select>`;
+        
+        const sel = document.getElementById('user-switcher');
+        allUsersList.forEach(u => {
+            const option = document.createElement('option'); // La variable est 'option'
+            option.value = u.spotify_id;
+            option.text = u.display_name + (u.spotify_id === currentUserId ? " (Moi)" : "");
+            if (u.spotify_id === currentUserId) option.selected = true;
+            sel.appendChild(option); // On utilise bien 'option' ici
+        });
+        sel.onchange = (e) => {
+            displayedUserId = e.target.value;
+            updateTheme(displayedUserId === currentUserId);
+            loadSupabaseStats(displayedUserId);
+        };
+    }
 
-        // --- 5. RECHERCHE (AUTOCOMPLETE) ---
-        function setupAutocomplete(type) {
-            const input = document.getElementById(`input-${type}`);
-            const results = document.getElementById(`results-${type}`);
-            let timer;
+    function updateTheme(isMe) {
+        const root = document.documentElement;
+        root.style.setProperty('--spotify-green', isMe ? '#1DB954' : '#e91429');
+        const user = allUsersList.find(u => u.spotify_id === displayedUserId);
+        if(user) document.getElementById('user-display-name').innerText = user.display_name;
+        document.querySelectorAll('.card.green').forEach(c => c.style.borderTopColor = 'var(--spotify-green)');
+    }
+    
+    window.changeRange = (range, btn) => { loadSpotifyApiStats(currentToken, range); document.querySelectorAll('.controls .filter-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); };
+    async function loadSpotifyApiStats(token, range) {
+        const h = { Authorization: `Bearer ${token}` };
+        const [aR, tR] = await Promise.all([ fetch(`https://api.spotify.com/v1/me/top/artists?time_range=${range}&limit=10`, {headers:h}), fetch(`https://api.spotify.com/v1/me/top/tracks?time_range=${range}&limit=10`, {headers:h}) ]);
+        const a = await aR.json(); const t = await tR.json();
+        const al = document.getElementById('api-artists'); al.innerHTML=''; if(a.items) a.items.forEach(i => al.innerHTML+=`<li>${i.name}</li>`);
+        const tl = document.getElementById('api-tracks'); tl.innerHTML=''; if(t.items) t.items.forEach(i => tl.innerHTML+=`<li>${i.name} - <span style="color:#3b82f6">${i.artists[0].name}</span></li>`);
+    }
 
-            input.addEventListener('input', (e) => {
-                clearTimeout(timer);
-                const query = e.target.value;
-                if(query.length < 2) { results.style.display = 'none'; return; }
 
-                timer = setTimeout(() => { searchSpotify(query, type); }, 400);
-            });
 
-            // Fermer si clic dehors
-            document.addEventListener('click', (e) => {
-                if(!e.target.closest(`#section-${type}`)) results.style.display = 'none';
-            });
+    async function timeTravel(period) {
+        const container = document.getElementById('time-travel-result');
+        container.innerHTML = '<p>Voyage temporel en cours...</p>';
+    
+        const date = new Date();
+        let label = "";
+    
+        if (period === 'month') {
+            date.setMonth(date.getMonth() - 1);
+            label = "il y a 1 mois";
+        } else if (period === 'six_months') {
+            date.setMonth(date.getMonth() - 6);
+            label = "il y a 6 mois";
+        } else if (period === 'year') {
+            date.setFullYear(date.getFullYear() - 1);
+            label = "il y a 1 an";
         }
-
-        async function searchSpotify(query, type) {
-            try {
-                const res = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=${type}&limit=5`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                
-                if (!res.ok) return; // On ignore silencieusement les erreurs de frappe rapide
-
-                const data = await res.json();
-                const items = (type === 'track') ? data.tracks.items : data.artists.items;
-                showDropdown(items, type);
-            } catch (e) { console.error(e); }
+    
+        const dateStr = getLocalDateString(date); // Utilise ta fonction existante
+        const prettyDate = date.toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    
+        // On cherche les sons écoutés CE jour-là  (start -> end of day)
+        const startOfDay = new Date(dateStr + 'T00:00:00');
+        const endOfDay = new Date(dateStr + 'T23:59:59');
+    
+        const { data, error } = await sb
+            .from('listening_history')
+            .select(`played_at, tracks (name, artists (name))`)
+            .eq('user_id', displayedUserId) // Utilise l'ID affiché
+            .gte('played_at', startOfDay.toISOString())
+            .lte('played_at', endOfDay.toISOString())
+            .order('played_at', { ascending: true });
+    
+        if (error || !data || data.length === 0) {
+            container.innerHTML = `
+                <h3 style="color:#e91429">Rien trouvé</h3>
+                <p>Tu n'as rien écouté le <strong>${prettyDate}</strong> (${label}).</p>
+            `;
+            return;
         }
-
-        function showDropdown(items, type) {
-            const div = document.getElementById(`results-${type}`);
-            div.innerHTML = '';
-            div.style.display = 'block';
-
-            if(items.length === 0) {
-                div.style.display = 'none';
-                return;
-            }
-
-            items.forEach(item => {
-                const row = document.createElement('div');
-                row.className = 'dropdown-item';
-                
-                let imgUrl = 'https://via.placeholder.com/45';
-                if(item.images && item.images.length) imgUrl = item.images[item.images.length-1].url;
-                else if(item.album && item.album.images.length) imgUrl = item.album.images[item.album.images.length-1].url;
-
-                let subText = (type === 'track') ? item.artists[0].name : 'Artiste';
-
-                row.innerHTML = `
-                    <img src="${imgUrl}">
-                    <div>
-                        <div style="font-weight:bold; font-size:0.9rem">${item.name}</div>
-                        <div style="font-size:0.8em; color:#bbb">${subText}</div>
-                    </div>
-                `;
-                row.onclick = () => selectItem(item, type, imgUrl, subText);
-                div.appendChild(row);
-            });
-        }
-
-        function selectItem(item, type, imgUrl, subText) {
-            document.getElementById(`seed-${type}-id`).value = item.id;
-            
-            // UI Switch
-            document.getElementById(`results-${type}`).style.display = 'none';
-            document.getElementById(`input-${type}`).style.display = 'none';
-            
-            const selDiv = document.getElementById(`selection-${type}`);
-            selDiv.style.display = 'inline-flex';
-            
-            if(type === 'track') {
-                document.getElementById('img-track').src = imgUrl;
-                document.getElementById('txt-track-name').textContent = item.name;
-                document.getElementById('txt-track-artist').textContent = subText;
-            } else {
-                document.getElementById('img-artist').src = imgUrl;
-                document.getElementById('txt-artist-name').textContent = item.name;
-            }
-        }
-
-        function clearSelection(type) {
-            document.getElementById(`seed-${type}-id`).value = '';
-            document.getElementById(`selection-${type}`).style.display = 'none';
-            document.getElementById(`input-${type}`).style.display = 'inline-block';
-            document.getElementById(`input-${type}`).value = '';
-            document.getElementById(`input-${type}`).focus();
-        }
-
-        // --- 6. GENERATION FINALE ---
-        async function generate() {
-            const grid = document.getElementById('grid');
-            const loader = document.getElementById('loading');
-            const errorDiv = document.getElementById('error-msg');
-            
-            grid.innerHTML = '';
-            errorDiv.style.display = 'none';
-            
-            // Validation
-            let url = 'https://api.spotify.com/v1/recommendations?limit=24&market=FR';
-            let hasSeed = false;
-
-            if (currentTab === 'track') {
-                const id = document.getElementById('seed-track-id').value;
-                if(id) { url += `&seed_tracks=${id}`; hasSeed = true; }
-            } else if (currentTab === 'artist') {
-                const id = document.getElementById('seed-artist-id').value;
-                if(id) { url += `&seed_artists=${id}`; hasSeed = true; }
-            } else if (currentTab === 'genre') {
-                const genre = document.getElementById('select-genre').value;
-                if(genre) { url += `&seed_genres=${genre}`; hasSeed = true; }
-            }
-
-            if(!hasSeed) {
-                alert("Attention : Vous devez sélectionner une musique, un artiste ou un genre pour lancer la recherche.");
-                return;
-            }
-
-            // Ajout des Sliders
-            url += `&target_valence=${document.getElementById('opt-valence').value}`;
-            url += `&target_energy=${document.getElementById('opt-energy').value}`;
-            url += `&target_danceability=${document.getElementById('opt-dance').value}`;
-
-            loader.style.display = 'block';
-
-            try {
-                const res = await fetch(url, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-
-                if (res.status === 401) {
-                    displayError("Votre session a expiré.");
-                    return;
-                }
-                
-                if (!res.ok) {
-                    const errTxt = await res.text();
-                    throw new Error("Erreur Spotify: " + errTxt);
-                }
-                
-                const data = await res.json();
-                
-                // Si pas d'erreur mais tracks vide
-                if (!data.tracks || data.tracks.length === 0) {
-                     grid.innerHTML = '<p style="text-align:center; grid-column:1/-1">Aucun résultat trouvé. Essayez de changer de style ou de titre de référence.</p>';
-                } else {
-                    displayTracks(data.tracks);
-                }
-
-            } catch (e) {
-                console.error(e);
-                displayError("Erreur technique : " + e.message);
-            } finally {
-                loader.style.display = 'none';
-            }
-        }
-
-        function displayTracks(tracks) {
-            const grid = document.getElementById('grid');
-            
-            tracks.forEach(track => {
-                const img = track.album.images[0] ? track.album.images[0].url : '';
-                const div = document.createElement('div');
-                div.className = 'card';
-                div.innerHTML = `
-                    <a href="${track.uri}" class="card-link"></a>
-                    <img src="${img}" loading="lazy">
-                    <h3>${track.name}</h3>
-                    <p>${track.artists.map(a=>a.name).join(', ')}</p>
-                `;
-                grid.appendChild(div);
-            });
-        }
-
-        function displayError(msg) {
-            const el = document.getElementById('error-msg');
-            const txt = document.getElementById('error-text');
-            if(txt) txt.textContent = msg;
-            else el.textContent = msg;
-            
-            // Ajoute le bouton retour si pas présent
-            if(!el.innerHTML.includes('btn-reconnect')) {
-                 el.innerHTML += '<br><a href="index.html" class="btn-reconnect">Se reconnecter</a>';
-            }
-            
-            el.style.display = 'block';
-            document.getElementById('loading').style.display = 'none';
-        }
+    
+        let html = `<h3>Le ${prettyDate}</h3><ul style="list-style:none; padding:0; text-align:left; max-width:400px; margin:0 auto;">`;
+        
+        // On limite à  10 pour pas faire une liste géante
+        data.slice(0, 15).forEach(item => {
+            const time = new Date(item.played_at).toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'});
+            html += `<li style="border-bottom:1px solid #333; padding:5px 0; display:flex; justify-content:space-between;">
+                <span>${item.tracks.name} <span style="color:#888">- ${item.tracks.artists.name}</span></span>
+                <span style="color:#1DB954; font-size:0.8em;">${time}</span>
+            </li>`;
+        });
+        html += '</ul>';
+        if(data.length > 15) html += `<p style="color:#888; font-size:0.8em; margin-top:5px;">Et ${data.length - 15} autres...</p>`;
+        
+        container.innerHTML = html;
+    }
+        
+    // --- FIDà‰LITà‰ / EXPLORATION ---
+    function renderLoyalty(data) {
+        const tbody = document.getElementById('loyalty-table');
+        tbody.innerHTML = '';
+    
+        // 1. Grouper par Artiste -> Set de IDs uniques
+        const artistMap = {};
+        data.forEach(d => {
+            const artist = d.artist_name;
+            if (!artistMap[artist]) artistMap[artist] = new Set();
+            artistMap[artist].add(d.track_id);
+        });
+    
+        // 2. Convertir en tableau et trier
+        const sortedArtists = Object.entries(artistMap)
+            .map(([name, set]) => ({ name, count: set.size }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5); // Top 5
+    
+        // 3. Afficher
+        const max = sortedArtists[0]?.count || 1;
+        
+        sortedArtists.forEach(a => {
+            const percent = (a.count / max) * 100;
+            tbody.innerHTML += `
+                <tr>
+                    <td>${a.name}</td>
+                    <td><strong>${a.count}</strong> titres distincts</td>
+                    <td style="width: 100px; vertical-align:middle;">
+                        <div style="background:#333; height:6px; border-radius:3px; width:100%;">
+                            <div style="background:#3b82f6; height:100%; border-radius:3px; width:${percent}%"></div>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+    }
     </script>
 
 </body>
 </html>
+
 
 
 
