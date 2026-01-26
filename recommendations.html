@@ -178,11 +178,11 @@
 
     </div>
 
-    <script>
+        <script>
         // CONFIG
         const LASTFM_KEY = 'ae5109579cce83beacc8cfa66e897433';
         
-        // --- 1. RECUPERATION TOKEN SPOTIFY (Juste pour la recherche visuelle) ---
+        // --- 1. TOKEN ---
         function getCleanToken() {
             let rawToken = localStorage.getItem('spotify_token');
             if (!rawToken) return null;
@@ -190,7 +190,6 @@
             if (rawToken === 'undefined' || rawToken === 'null') return null;
             return rawToken.trim();
         }
-
         const token = getCleanToken();
 
         // --- 2. NAVIGATION ---
@@ -200,24 +199,18 @@
             currentTab = tab;
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             document.querySelector(`button[onclick="switchTab('${tab}')"]`).classList.add('active');
-            
             document.querySelectorAll('.search-section').forEach(s => s.classList.remove('active'));
             document.getElementById(`section-${tab}`).classList.add('active');
-            
             document.getElementById('grid').innerHTML = '';
         }
 
-        // --- 3. INITIALISATION ---
+        // --- 3. INIT ---
         window.addEventListener('load', () => {
-            if (!token) {
-                displayError("Erreur : Connectez-vous via l'accueil pour voir les images.");
-            } else {
-                setupAutocomplete('track');
-                setupAutocomplete('artist');
-            }
+            if (!token) displayError("Connectez-vous à l'accueil pour voir les images.");
+            else { setupAutocomplete('track'); setupAutocomplete('artist'); }
         });
 
-        // --- 4. RECHERCHE SPOTIFY (Juste pour sélectionner proprement) ---
+        // --- 4. RECHERCHE VISUELLE (AUTOCOMPLETE) ---
         function setupAutocomplete(type) {
             const input = document.getElementById(`input-${type}`);
             const results = document.getElementById(`results-${type}`);
@@ -225,9 +218,8 @@
 
             input.addEventListener('input', (e) => {
                 clearTimeout(timer);
-                const query = e.target.value;
-                if(query.length < 2) { results.style.display = 'none'; return; }
-                timer = setTimeout(() => { searchSpotify(query, type); }, 400);
+                if(e.target.value.length < 2) { results.style.display = 'none'; return; }
+                timer = setTimeout(() => { searchSpotify(e.target.value, type); }, 400);
             });
 
             document.addEventListener('click', (e) => {
@@ -240,9 +232,7 @@
                 const res = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=${type}&limit=5`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                
                 if (!res.ok) return; 
-
                 const data = await res.json();
                 const items = (type === 'track') ? data.tracks.items : data.artists.items;
                 showDropdown(items, type);
@@ -253,29 +243,22 @@
             const div = document.getElementById(`results-${type}`);
             div.innerHTML = '';
             div.style.display = 'block';
-
             if(items.length === 0) { div.style.display = 'none'; return; }
 
             items.forEach(item => {
                 const row = document.createElement('div');
                 row.className = 'dropdown-item';
-                
-                let imgUrl = 'https://via.placeholder.com/45';
-                if(item.images && item.images.length) imgUrl = item.images[item.images.length-1].url;
-                else if(item.album && item.album.images.length) imgUrl = item.album.images[item.album.images.length-1].url;
-
+                let imgUrl = item.album ? (item.album.images[2]?.url || '') : (item.images[2]?.url || '');
                 let subText = (type === 'track') ? item.artists[0].name : 'Artiste';
 
-                row.innerHTML = `<img src="${imgUrl}"><div><div style="font-weight:bold; font-size:0.9rem">${item.name}</div><div style="font-size:0.8em; color:#bbb">${subText}</div></div>`;
+                row.innerHTML = `<img src="${imgUrl}" style="background:#333"><div><div style="font-weight:bold; font-size:0.9rem">${item.name}</div><div style="font-size:0.8em; color:#bbb">${subText}</div></div>`;
                 
-                // Important : on stocke les NOMS TEXTE pour Last.fm
                 row.onclick = () => selectItem(item, type, imgUrl, subText);
                 div.appendChild(row);
             });
         }
 
         function selectItem(item, type, imgUrl, subText) {
-            // Pour Last.fm, on a besoin du nom exact + artiste
             if(type === 'track') {
                 document.getElementById('seed-track-name').value = item.name;
                 document.getElementById('seed-track-artist').value = item.artists[0].name;
@@ -283,7 +266,6 @@
                 document.getElementById('seed-artist-name').value = item.name;
             }
             
-            // UI Switch
             document.getElementById(`results-${type}`).style.display = 'none';
             document.getElementById(`input-${type}`).style.display = 'none';
             
@@ -301,21 +283,19 @@
         }
 
         function clearSelection(type) {
-             // Reset values
             if(type === 'track') {
                 document.getElementById('seed-track-name').value = '';
                 document.getElementById('seed-track-artist').value = '';
             } else {
                 document.getElementById('seed-artist-name').value = '';
             }
-
             document.getElementById(`selection-${type}`).style.display = 'none';
             document.getElementById(`input-${type}`).style.display = 'inline-block';
             document.getElementById(`input-${type}`).value = '';
             document.getElementById(`input-${type}`).focus();
         }
 
-        // --- 5. GENERATION HYBRIDE (LAST.FM -> SPOTIFY) ---
+        // --- 5. ALGORITHME HYBRIDE (CORRIGÉ) ---
         async function generateHybrid() {
             const grid = document.getElementById('grid');
             const loader = document.getElementById('loading');
@@ -328,23 +308,26 @@
             try {
                 let similarItems = [];
 
-                // A. APPEL LAST.FM (Pour l'intelligence)
+                // A. LAST.FM (Le Cerveau)
                 if (currentTab === 'track') {
                     const trackName = document.getElementById('seed-track-name').value;
                     const artistName = document.getElementById('seed-track-artist').value;
                     
                     if(!trackName) throw new Error("Sélectionnez un titre.");
 
-                    const res = await fetch(`https://ws.audioscrobbler.com/2.0/?method=track.getsimilar&artist=${encodeURIComponent(artistName)}&track=${encodeURIComponent(trackName)}&api_key=${LASTFM_KEY}&format=json&limit=15`);
+                    // On demande des titres similaires
+                    const res = await fetch(`https://ws.audioscrobbler.com/2.0/?method=track.getsimilar&artist=${encodeURIComponent(artistName)}&track=${encodeURIComponent(trackName)}&api_key=${LASTFM_KEY}&format=json&limit=12`);
                     const data = await res.json();
                     
                     if(data.error) throw new Error(data.message);
-                    if(!data.similartracks || !data.similartracks.track.length) throw new Error("Aucun résultat similaire trouvé sur Last.fm.");
+                    if(!data.similartracks || !data.similartracks.track.length) throw new Error("Pas de titres similaires trouvés.");
                     
-                    // On prépare la liste "Artiste - Titre"
+                    // --- CORRECTION MAJEURE ICI ---
+                    // On crée une requête "floue" : "Titre Artiste" sans spécifier "track:" ou "artist:"
+                    // Cela permet à Spotify de trouver le morceau même s'il y a une faute ou "Remastered"
                     similarItems = data.similartracks.track.map(t => ({
-                        query: `track:${t.name} artist:${t.artist.name}`,
-                        name: t.name,
+                        searchQuery: `${t.name} ${t.artist.name}`, 
+                        title: t.name,
                         artist: t.artist.name
                     }));
 
@@ -352,49 +335,44 @@
                     const artistName = document.getElementById('seed-artist-name').value;
                     if(!artistName) throw new Error("Sélectionnez un artiste.");
 
-                    const res = await fetch(`https://ws.audioscrobbler.com/2.0/?method=artist.getsimilar&artist=${encodeURIComponent(artistName)}&api_key=${LASTFM_KEY}&format=json&limit=15`);
+                    const res = await fetch(`https://ws.audioscrobbler.com/2.0/?method=artist.getsimilar&artist=${encodeURIComponent(artistName)}&api_key=${LASTFM_KEY}&format=json&limit=12`);
                     const data = await res.json();
 
                     if(data.error) throw new Error(data.message);
-                    if(!data.similarartists || !data.similarartists.artist.length) throw new Error("Aucun artiste similaire trouvé.");
+                    if(!data.similarartists || !data.similarartists.artist.length) throw new Error("Pas d'artistes similaires trouvés.");
 
                     similarItems = data.similarartists.artist.map(a => ({
-                        query: `artist:${a.name}`,
+                        searchQuery: `artist:${a.name}`, // Pour les artistes, le filtre strict marche bien
                         name: a.name
                     }));
                 }
 
-                // B. APPEL SPOTIFY (Pour l'affichage et la lecture)
-                // On doit faire une recherche pour CHAQUE résultat Last.fm pour avoir son image et ID Spotify
-                // Pour aller vite, on lance toutes les requêtes en parallèle (Promise.all)
-                
+                // B. SPOTIFY (L'Affichage)
                 const spotifyPromises = similarItems.map(async (item) => {
                     try {
-                        const searchRes = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(item.query)}&type=${currentTab}&limit=1`, {
+                        // On cherche le titre sur Spotify
+                        const searchRes = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(item.searchQuery)}&type=${currentTab}&limit=1`, {
                             headers: { 'Authorization': `Bearer ${token}` }
                         });
                         const searchData = await searchRes.json();
                         
-                        // On prend le premier résultat
-                        if (currentTab === 'track' && searchData.tracks.items.length > 0) {
-                            return searchData.tracks.items[0];
-                        } else if (currentTab === 'artist' && searchData.artists.items.length > 0) {
-                            return searchData.artists.items[0];
+                        if (currentTab === 'track') {
+                            // On vérifie qu'on a bien un résultat
+                            return (searchData.tracks && searchData.tracks.items.length > 0) ? searchData.tracks.items[0] : null;
+                        } else {
+                            return (searchData.artists && searchData.artists.items.length > 0) ? searchData.artists.items[0] : null;
                         }
-                        return null;
                     } catch(e) { return null; }
                 });
 
-                const spotifyResults = await Promise.all(spotifyPromises);
+                const results = await Promise.all(spotifyPromises);
+                const finalResults = results.filter(i => i !== null); // On garde que ce qu'on a trouvé
                 
-                // On filtre les nuls (ceux qu'on n'a pas trouvés sur Spotify)
-                const finalTracks = spotifyResults.filter(i => i !== null);
-                
-                displayResults(finalTracks);
+                displayResults(finalResults);
 
             } catch (e) {
                 console.error(e);
-                displayError("Erreur : " + e.message);
+                displayError("Oups : " + e.message);
             } finally {
                 loader.style.display = 'none';
             }
@@ -404,7 +382,7 @@
             const grid = document.getElementById('grid');
             
             if(items.length === 0) {
-                grid.innerHTML = '<p style="text-align:center; grid-column:1/-1">Aucun résultat correspondant trouvé sur Spotify.</p>';
+                grid.innerHTML = '<p style="text-align:center; grid-column:1/-1">Last.fm a des idées, mais impossible de les trouver sur Spotify (noms trop différents).</p>';
                 return;
             }
 
@@ -414,11 +392,11 @@
                 let subtitle = '';
 
                 if (currentTab === 'track') {
-                    if(item.album.images.length) imgUrl = item.album.images[0].url;
+                    if(item.album.images.length) imgUrl = item.album.images[1]?.url || item.album.images[0].url;
                     subtitle = item.artists.map(a=>a.name).join(', ');
                 } else {
-                    if(item.images.length) imgUrl = item.images[0].url;
-                    subtitle = 'Artiste';
+                    if(item.images.length) imgUrl = item.images[1]?.url || item.images[0].url;
+                    subtitle = 'Artiste similaire';
                 }
 
                 const div = document.createElement('div');
@@ -436,15 +414,11 @@
         function displayError(msg) {
             const el = document.getElementById('error-msg');
             const txt = document.getElementById('error-text');
-            if(txt) txt.textContent = msg;
-            else el.textContent = msg;
-            
-            if(!el.innerHTML.includes('btn-reconnect')) {
-                 el.innerHTML += '<br><a href="index.html" class="btn-reconnect">Se reconnecter</a>';
-            }
+            if(txt) txt.textContent = msg; else el.textContent = msg;
             el.style.display = 'block';
             document.getElementById('loading').style.display = 'none';
         }
     </script>
+
 </body>
 </html>
