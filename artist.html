@@ -4,6 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Détail Artiste - Spotify Stats</title>
+    <!-- Chart.js est requis pour le diagramme en araignée -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
@@ -135,9 +136,12 @@
 
         .album-actions {
             margin-top: 6px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
         }
 
-        .play-btn {
+        .play-btn, .chart-btn {
             background: var(--spotify-green);
             color: black;
             border: none;
@@ -147,10 +151,25 @@
             font-size: 0.8rem;
             font-weight: 600;
         }
-
-        .play-btn:hover {
-            filter: brightness(1.05);
+        
+        .chart-btn {
+            background: #333;
+            color: white;
+            border: 1px solid #555;
         }
+
+        .play-btn:hover { filter: brightness(1.05); }
+        .chart-btn:hover { background: #444; border-color: #888; }
+
+        /* ZONE GRAPHIQUE RADAR */
+        .chart-container {
+            display: none; /* Caché par défaut */
+            margin-top: 15px;
+            background: #121212;
+            padding: 10px;
+            border-radius: 8px;
+        }
+        .chart-container.active { display: block; }
 
         /* Table des pistes */
         .mini-table {
@@ -250,7 +269,7 @@
         }
         document.getElementById('artist-name').innerText = artistName;
 
-        // 1. Trouver l'artiste sur Spotify (ID + photo + tags)
+        // 1. Trouver l'artiste
         const searchRes = await spotifyFetch(
             `https://api.spotify.com/v1/search?q=${encodeURIComponent(artistName)}&type=artist&limit=5`
         );
@@ -259,13 +278,9 @@
             return;
         }
         
-        // Debug éventuel : voir les candidats dans la console
-        console.log('Résultats Spotify pour', artistName, searchRes.artists.items);
-        
-        // On essaie de choisir le meilleur candidat par nom
+        // Meilleur match
         const items = searchRes.artists.items;
         const normalizedTarget = artistName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, '');
-        
         let best = items[0];
         for (const cand of items) {
             const normalizedName = cand.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, '');
@@ -274,20 +289,14 @@
                 break;
             }
         }
-        
         const artist = best;
         const artistId = artist.id;
 
-
-        // Photo artiste
+        // Photo & Tags
         const photoUrl = artist.images?.[0]?.url || '';
-        if (photoUrl) {
-            document.getElementById('artist-photo').src = photoUrl;
-        } else {
-            document.getElementById('artist-photo').style.background = '#333';
-        }
+        document.getElementById('artist-photo').src = photoUrl || '';
+        if(!photoUrl) document.getElementById('artist-photo').style.background = '#333';
 
-        // Tags artiste (genres + popularité)
         const tagsDiv = document.getElementById('artist-tags');
         tagsDiv.innerHTML = '';
         if (artist.genres?.length) {
@@ -304,7 +313,7 @@
         pop.innerText = `Popularité ${artist.popularity}/100`;
         tagsDiv.appendChild(pop);
 
-        // 2. Charger l'historique de CET artiste depuis Supabase (pour les compteurs)
+        // 2. Historique Supabase
         const { data: historyData, error } = await sb
             .from('listening_history')
             .select(`
@@ -318,12 +327,7 @@
             .eq('user_id', mySpotifyId)
             .limit(20000); 
 
-        if (error) {
-            console.error(error);
-        }
-
-        // Construire une map de counts par (album, titre)
-        const playCounts = {}; // playCounts[albumName][trackName] = nb
+        const playCounts = {}; 
         let totalGlobal = 0;
         if (historyData) {
             historyData.forEach(row => {
@@ -335,23 +339,20 @@
             });
         }
 
-        // 3. Récupérer tous les albums de l'artiste
+        // 3. Récupérer Albums
         let albums = [];
         let nextUrl = `https://api.spotify.com/v1/artists/${artistId}/albums?include_groups=album,single,compilation&market=FR&limit=20`;
-
-        const seenAlbumNames = new Set(); // pour éviter doublons (même album sur plusieurs marchés)
+        const seenAlbumNames = new Set(); 
 
         while (nextUrl) {
             const albumsRes = await spotifyFetch(nextUrl);
             if (!albumsRes) break;
-
             albumsRes.items.forEach(a => {
                 if (!seenAlbumNames.has(a.name)) {
                     seenAlbumNames.add(a.name);
                     albums.push(a);
                 }
             });
-
             nextUrl = albumsRes.next;
         }
 
@@ -360,25 +361,23 @@
             return;
         }
 
-        // 4. Pour chaque album, récupérer les pistes, croiser avec Supabase, afficher
         const albumsContainer = document.getElementById('albums-container');
         albumsContainer.innerHTML = '';
-
         let totalAlbums = albums.length;
         document.getElementById('artist-stats').innerText = `${totalAlbums} albums / singles • ${totalGlobal} écoutes dans ton historique`;
 
+        // 4. Boucle sur les albums
         for (const album of albums) {
             const albumId = album.id;
             const albumName = album.name;
             const albumCover = album.images?.[0]?.url || '';
             const albumYear = (album.release_date || '').slice(0,4);
 
-            // Récupérer toutes les pistes de l'album
             const tracksRes = await spotifyFetch(`https://api.spotify.com/v1/albums/${albumId}/tracks?limit=50`);
             if (!tracksRes) continue;
             const albumTracks = tracksRes.items || [];
 
-            // Construire la liste avec compteur d'écoutes (0 si jamais écouté)
+            // Enrichissement
             const enrichedTracks = albumTracks.map(t => {
                 const tName = t.name;
                 const count = (playCounts[albumName] && playCounts[albumName][tName]) ? playCounts[albumName][tName] : 0;
@@ -386,25 +385,23 @@
                     name: tName,
                     count,
                     uri: t.uri,
-                    id: t.id // <--- ajout important
+                    id: t.id 
                 };
             });
 
-
-            // Trier par nombre d'écoutes (desc), mais on peut garder l'ordre original pour l'album, donc on ne trie pas pour l'affichage
             const totalAlbumPlays = enrichedTracks.reduce((acc, t) => acc + t.count, 0);
             const nbTracksListened = enrichedTracks.filter(t => t.count > 0).length;
+            const albumUris = enrichedTracks.map(t => t.uri).filter(Boolean);
+            const trackIds = enrichedTracks.map(t => t.id).filter(Boolean).join(','); // Pour l'audio analysis
 
-            // 5. Générer la carte HTML pour l'album
+            // --- CRÉATION CARTE ALBUM ---
             const card = document.createElement('div');
             card.className = 'album-card';
+            card.id = `album-card-${albumId}`;
 
             const coverHtml = albumCover 
                 ? `<img src="${albumCover}" alt="${albumName}" class="album-cover" loading="lazy">`
                 : `<div class="album-cover"></div>`;
-
-            // Bouton Play pour cet album
-            const albumUris = enrichedTracks.map(t => t.uri).filter(Boolean);
 
             card.innerHTML = `
                 <div class="album-top">
@@ -416,10 +413,17 @@
                             ${totalAlbumPlays} écoutes • ${nbTracksListened} titres écoutés
                         </div>
                         <div class="album-actions">
-                            ${albumUris.length ? `<button class="play-btn" data-uris="${albumUris.join(',')}">▶️ Lancer cet album</button>` : ''}
+                            ${albumUris.length ? `<button class="play-btn" data-uris="${albumUris.join(',')}">▶️ Lancer</button>` : ''}
+                            ${trackIds ? `<button class="chart-btn" onclick="toggleRadarChart('${albumId}', '${trackIds}', '${albumName.replace(/'/g, "\\'")}')">🕸️ Analyse Audio</button>` : ''}
                         </div>
                     </div>
                 </div>
+                
+                <!-- CONTAINER CHART (caché par défaut) -->
+                <div id="chart-container-${albumId}" class="chart-container">
+                    <canvas id="chart-${albumId}"></canvas>
+                </div>
+
                 <table class="mini-table">
                     <thead>
                         <tr>
@@ -451,7 +455,6 @@
 
             albumsContainer.appendChild(card);
 
-            // Ajouter écouteur sur le bouton Play de cet album
             const playBtn = card.querySelector('.play-btn');
             if (playBtn) {
                 const uris = playBtn.getAttribute('data-uris').split(',');
@@ -460,49 +463,129 @@
         }
     }
 
-    async function playAlbum(uris, albumName) {
-        if (!spotifyToken) {
-            alert("Token Spotify manquant. Reconnecte-toi sur le dashboard.");
-            return;
-        }
-        if (!uris.length) {
-            alert("Aucun titre trouvable pour cet album.");
+    // --- FONCTION RADAR CHART ---
+    // Cette fonction est appelée quand on clique sur le bouton "Analyse Audio"
+    window.radarCharts = {}; // Stockage des instances de chart
+
+    async function toggleRadarChart(albumId, trackIdsString, albumName) {
+        const container = document.getElementById(`chart-container-${albumId}`);
+        const canvas = document.getElementById(`chart-${albumId}`);
+        
+        // Si déjà ouvert, on ferme
+        if (container.classList.contains('active')) {
+            container.classList.remove('active');
             return;
         }
 
+        // Sinon, on ouvre et on charge si pas encore fait
+        container.classList.add('active');
+
+        // Si le graphique existe déjà, on ne recharge pas
+        if (window.radarCharts[albumId]) return;
+
+        // Chargement des Audio Features
+        // L'API accepte max 100 ids, un album en a rarement plus
+        const res = await spotifyFetch(`https://api.spotify.com/v1/audio-features?ids=${trackIdsString}`);
+        if (!res || !res.audio_features) {
+            container.innerHTML = "<p style='color:#888; text-align:center;'>Analyse indisponible.</p>";
+            return;
+        }
+
+        const features = res.audio_features.filter(f => f !== null);
+        if (features.length === 0) {
+            container.innerHTML = "<p style='color:#888; text-align:center;'>Pas de données audio.</p>";
+            return;
+        }
+
+        // Calcul des moyennes
+        let danceability = 0, energy = 0, valence = 0, acousticness = 0, instrumentalness = 0, liveness = 0;
+        
+        features.forEach(f => {
+            danceability += f.danceability;
+            energy += f.energy;
+            valence += f.valence;
+            acousticness += f.acousticness;
+            instrumentalness += f.instrumentalness;
+            liveness += f.liveness;
+        });
+
+        const count = features.length;
+        const data = [
+            danceability / count,
+            energy / count,
+            valence / count,
+            acousticness / count,
+            instrumentalness / count,
+            liveness / count
+        ];
+
+        // Création du Chart
+        const ctx = canvas.getContext('2d');
+        window.radarCharts[albumId] = new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: ['Dansant', 'Énergie', 'Positivité (Valence)', 'Acoustique', 'Instrumental', 'Live'],
+                datasets: [{
+                    label: `Moyenne : ${albumName}`,
+                    data: data,
+                    backgroundColor: 'rgba(29, 185, 84, 0.4)', // Vert Spotify semi-transparent
+                    borderColor: '#1DB954',
+                    pointBackgroundColor: '#fff',
+                    pointBorderColor: '#1DB954',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false, // Permet de gérer la hauteur via CSS si besoin
+                scales: {
+                    r: {
+                        angleLines: { color: '#333' },
+                        grid: { color: '#333' },
+                        pointLabels: {
+                            color: '#ccc',
+                            font: { size: 11 }
+                        },
+                        ticks: {
+                            display: false, // Cache les chiffres de l'échelle (0.2, 0.4...)
+                            backdropColor: 'transparent'
+                        },
+                        min: 0,
+                        max: 1
+                    }
+                },
+                plugins: {
+                    legend: { display: false } // On cache la légende pour gagner de la place
+                }
+            }
+        });
+        
+        // Ajuster la hauteur du canvas pour qu'il soit joli
+        canvas.style.height = '250px';
+    }
+
+    async function playAlbum(uris, albumName) {
+        if (!spotifyToken) return alert("Reconnecte-toi.");
         try {
-            // 1. Récupérer appareils
             const devicesRes = await fetch('https://api.spotify.com/v1/me/player/devices', {
                 headers: { Authorization: `Bearer ${spotifyToken}` }
             });
-            const devicesData = await devicesRes.json();
-            const devices = devicesData.devices || [];
-            if (!devices.length) {
-                alert("Aucun appareil détecté. Lance Spotify sur ton téléphone ou PC !");
-                return;
-            }
-            const targetDevice = devices.find(d => d.is_active) || devices[0];
+            const d = await devicesRes.json();
+            const device = (d.devices || []).find(x => x.is_active) || (d.devices || [])[0];
+            
+            if(!device) return alert("Lance Spotify sur un appareil d'abord !");
 
-            // 2. Ajouter en queue (pour éviter de casser ta lecture actuelle)
             let count = 0;
             for (const uri of uris) {
-                const r = await fetch(`https://api.spotify.com/v1/me/player/queue?uri=${encodeURIComponent(uri)}&device_id=${targetDevice.id}`, {
+                const r = await fetch(`https://api.spotify.com/v1/me/player/queue?uri=${encodeURIComponent(uri)}&device_id=${device.id}`, {
                     method: 'POST',
                     headers: { Authorization: `Bearer ${spotifyToken}` }
                 });
                 if (r.ok) count++;
-                await new Promise(res => setTimeout(res, 80));
             }
-
-            alert(`✅ ${count} titres de "${albumName}" ajoutés à ta file d'attente sur ${targetDevice.name}.`);
-
-        } catch (e) {
-            console.error(e);
-            alert("Erreur lors de l'envoi à Spotify (Compte Premium requis ?).");
-        }
+            alert(`✅ ${count} titres ajoutés à la file.`);
+        } catch (e) { console.error(e); alert("Erreur lecture."); }
     }
-
-    loadArtistData();
 </script>
 
 </body>
