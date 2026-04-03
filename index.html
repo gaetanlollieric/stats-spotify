@@ -711,13 +711,6 @@
         periodGroup.appendChild(dateInput);
         topBar.appendChild(select);
         topBar.appendChild(periodGroup);
-
-        // Bouton Comparaison
-        const compareBtn = document.createElement('button');
-        compareBtn.className = 'filter-btn';
-        compareBtn.innerText = 'Comparaison';
-        compareBtn.onclick = () => window.location.href = 'comparaison.html';
-        topBar.appendChild(compareBtn);
     }
 
     function resetSpecificInputs() {
