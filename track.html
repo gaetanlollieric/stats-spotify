@@ -3,10 +3,134 @@
 <head>
   <meta charset="UTF-8">
   <title>Détail du titre - Spotify Stats</title>
-  <link rel="stylesheet" href="style.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --spotify-green:#1ED760;
+      --bg-main:#0b0b0b;
+      --bg-elevated:#181818;
+      --text-main:#FFFFFF;
+      --text-secondary:#A7A7A7;
+      --border-subtle:rgba(255,255,255,0.08);
+      --radius-lg:16px;
+      --radius-full:999px;
+      --font-stack:'Circular',-apple-system,sans-serif;
+    }
+    body{
+      font-family:var(--font-stack);
+      background:var(--bg-main);
+      color:var(--text-main);
+      margin:0;
+      padding:30px;
+    }
+    .container{max-width:900px;margin:0 auto;}
+    a.back-btn{
+      text-decoration:none;
+      color:var(--text-secondary);
+      font-size:0.9rem;
+    }
+    a.back-btn:hover{color:var(--spotify-green);}
+    .track-header{
+      display:flex;
+      gap:24px;
+      margin-top:20px;
+      align-items:center;
+    }
+    .cover{
+      width:160px;
+      height:160px;
+      border-radius:12px;
+      object-fit:cover;
+      background:#333;
+      box-shadow:0 8px 24px rgba(0,0,0,0.5);
+      flex-shrink:0;
+    }
+    .meta h1{
+      margin:0 0 8px;
+      font-size:1.8rem;
+    }
+    .meta .artist{
+      color:var(--text-secondary);
+      margin-bottom:6px;
+    }
+    .meta .album{
+      color:var(--text-secondary);
+      font-size:0.9rem;
+    }
+    .meta .info-line{
+      color:var(--text-secondary);
+      font-size:0.9rem;
+      margin-top:4px;
+    }
+    .btn-spotify{
+      margin-top:16px;
+      background:var(--spotify-green);
+      color:black;
+      border:none;
+      padding:10px 26px;
+      border-radius:var(--radius-full);
+      font-weight:700;
+      cursor:pointer;
+    }
+    .btn-spotify:hover{filter:brightness(1.1);}
+    .card{
+      margin-top:30px;
+      background:var(--bg-elevated);
+      border-radius:var(--radius-lg);
+      border:1px solid var(--border-subtle);
+      padding:20px;
+    }
+    h2{margin-top:0;font-size:1.3rem;}
+    .stat-row{
+      display:flex;
+      justify-content:space-between;
+      margin-bottom:8px;
+      color:var(--text-secondary);
+      font-size:0.95rem;
+    }
+    audio{width:100%;margin-top:10px;}
 
+    /* Titres similaires */
+    .similar-track {
+      display:flex;
+      align-items:center;
+      gap:12px;
+      padding:6px 0;
+    }
+    .similar-cover {
+      width:46px;
+      height:46px;
+      border-radius:6px;
+      object-fit:cover;
+      background:#333;
+      flex-shrink:0;
+    }
+    .similar-meta {
+      flex:1;
+      overflow:hidden;
+    }
+    .similar-title {
+      font-size:0.9rem;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .similar-artist {
+      font-size:0.8rem;
+      color:var(--text-secondary);
+    }
+    .similar-btn {
+      border:none;
+      background:var(--spotify-green);
+      color:black;
+      border-radius:999px;
+      padding:4px 10px;
+      font-size:0.75rem;
+      cursor:pointer;
+      margin-left:4px;
+    }
+    .similar-btn:hover { filter:brightness(1.08); }
+  </style>
 </head>
 <body>
 <div class="container">
@@ -25,11 +149,6 @@
   <div class="card" id="similar-card" style="display:none; margin-top:20px;">
     <h2>🎧 Titres similaires</h2>
     <div id="similar-list"></div>
-  </div>
-
-  <div class="chart-container">
-    <h2>📈 Évolution des streams cumulés</h2>
-    <canvas id="streamsChart"></canvas>
   </div>
 </div>
 
@@ -53,7 +172,6 @@
     loadTrack();
     loadTrackStats();
     loadSimilarTracks();
-    loadChartData();
   }
 
   async function spotifyFetch(url) {
@@ -221,105 +339,6 @@
     } else {
       alert("Impossible d'ajouter à la file (code " + res.status + ").");
     }
-  }
-
-  // --- Chart data ---
-  async function loadChartData() {
-    // Personal data from Supabase
-    const { data: personalData, error } = await sb
-      .from('listening_history')
-      .select('played_at')
-      .eq('user_id', mySpotifyId)
-      .eq('tracks.spotify_id', trackId)
-      .order('played_at', { ascending: true });
-
-    if (error) {
-      console.error('Error loading personal data:', error);
-      return;
-    }
-
-    // Aggregate personal plays by date
-    const personalPlays = {};
-    personalData.forEach(play => {
-      const date = new Date(play.played_at).toISOString().split('T')[0];
-      personalPlays[date] = (personalPlays[date] || 0) + 1;
-    });
-
-    // Fetch friends data from local JSON
-    let friendsData = {};
-    try {
-      const res = await fetch('/friends_data.json');
-      if (res.ok) {
-        const json = await res.json();
-        // Assume json.friends is array of { date: '2023-01-01', plays: 10 }
-        json.friends.forEach(friend => {
-          const date = friend.date;
-          friendsData[date] = (friendsData[date] || 0) + friend.plays;
-        });
-      }
-    } catch (e) {
-      console.warn('Friends data not available:', e);
-    }
-
-    // Combine dates
-    const allDates = new Set([...Object.keys(personalPlays), ...Object.keys(friendsData)]);
-    const sortedDates = Array.from(allDates).sort();
-
-    // Cumulative
-    let personalCum = 0;
-    let friendsCum = 0;
-    const personalCumData = [];
-    const friendsCumData = [];
-
-    sortedDates.forEach(date => {
-      personalCum += personalPlays[date] || 0;
-      friendsCum += friendsData[date] || 0;
-      personalCumData.push(personalCum);
-      friendsCumData.push(friendsCum);
-    });
-
-    renderChart(sortedDates, personalCumData, friendsCumData);
-  }
-
-  function renderChart(labels, personalData, friendsData) {
-    const ctx = document.getElementById('streamsChart').getContext('2d');
-    new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: labels,
-        datasets: [{
-          label: 'Mes streams',
-          data: personalData,
-          borderColor: '#1ED760',
-          backgroundColor: 'rgba(30, 215, 96, 0.1)',
-          fill: true,
-        }, {
-          label: 'Streams amis',
-          data: friendsData,
-          borderColor: '#A7A7A7',
-          backgroundColor: 'rgba(167, 167, 167, 0.1)',
-          fill: true,
-        }]
-      },
-      options: {
-        responsive: true,
-        scales: {
-          x: {
-            title: {
-              display: true,
-              text: 'Temps'
-            }
-          },
-          y: {
-            title: {
-              display: true,
-              text: 'Streams cumulés'
-            },
-            beginAtZero: true
-          }
-        }
-      }
-    });
   }
 </script>
 </body>
