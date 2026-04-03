@@ -2,7 +2,6 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://api.spotify.com https://ws.audioscrobbler.com; img-src 'self' data: https://i.scdn.co https://lastfm.freetls.fastly.net; style-src 'self' 'unsafe-inline';">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Spotify Discover (via Last.fm)</title>
     <style>
@@ -183,13 +182,6 @@
         // CONFIG
         const LASTFM_KEY = 'ae5109579cce83beacc8cfa66e897433';
         
-        // --- 0. UTILITAIRES ---
-        function sanitizeHTML(value) {
-            const tmp = document.createElement('div');
-            tmp.textContent = value;
-            return tmp.innerHTML;
-        }
-
         // --- 1. TOKEN ---
         function getCleanToken() {
             let rawToken = localStorage.getItem('spotify_token');
@@ -259,12 +251,9 @@
                 let imgUrl = item.album ? (item.album.images[2]?.url || '') : (item.images[2]?.url || '');
                 let subText = (type === 'track') ? item.artists[0].name : 'Artiste';
 
-                const safeImgUrl = sanitizeHTML(imgUrl || '');
-                const safeItemName = sanitizeHTML(item.name || '');
-                const safeSubText = sanitizeHTML(subText || '');
-                row.innerHTML = `<img src="${safeImgUrl}" style="background:#333"><div><div style="font-weight:bold; font-size:0.9rem">${safeItemName}</div><div style="font-size:0.8em; color:#bbb">${safeSubText}</div></div>`;
+                row.innerHTML = `<img src="${imgUrl}" style="background:#333"><div><div style="font-weight:bold; font-size:0.9rem">${item.name}</div><div style="font-size:0.8em; color:#bbb">${subText}</div></div>`;
                 
-                row.onclick = () => selectItem(item, type, safeImgUrl, safeSubText);
+                row.onclick = () => selectItem(item, type, imgUrl, subText);
                 div.appendChild(row);
             });
         }

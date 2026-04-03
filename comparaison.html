@@ -2,7 +2,6 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://kvrwymmsgwstvyqmscuy.supabase.co https://api.spotify.com; img-src 'self' data: https://i.scdn.co; style-src 'self' 'unsafe-inline';">
   <title>Comparaison - Spotify Stats</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -44,15 +43,6 @@
       width:200px;
     }
     .filters input::placeholder{color:var(--text-secondary);}
-    .back-btn{
-      display:block;
-      text-align:center;
-      margin-bottom:20px;
-      text-decoration:none;
-      color:var(--text-secondary);
-      font-size:0.9rem;
-    }
-    .back-btn:hover{color:var(--spotify-green);}
     .chart-container{
       background:var(--bg-elevated);
       border-radius:var(--radius-lg);
@@ -64,13 +54,10 @@
 </head>
 <body>
 <div class="container">
-  <a href="index.html" class="back-btn">← Retour à l'accueil</a>
   <h1>Comparaison des écoutes entre amis</h1>
   <div class="filters">
-    <input type="text" id="artist-filter" placeholder="Filtrer par artiste" list="artist-list">
-    <datalist id="artist-list"></datalist>
-    <input type="text" id="title-filter" placeholder="Filtrer par titre" list="title-list">
-    <datalist id="title-list"></datalist>
+    <input type="text" id="artist-filter" placeholder="Filtrer par artiste">
+    <input type="text" id="title-filter" placeholder="Filtrer par titre">
   </div>
   <div class="chart-container">
     <h2>Évolution des streams cumulés</h2>
@@ -81,18 +68,9 @@
 <script>
   // --- CONFIG SUPABASE ---
   const SUPABASE_URL = 'https://kvrwymmsgwstvyqmscuy.supabase.co';
-  const SUPABASE_KEY = localStorage.getItem('supabase_anon_key');
-  if (!SUPABASE_KEY) {
-    console.error("Supabase clé non trouvée : définis 'supabase_anon_key' dans le localStorage ou utilise un backend sécurisé");
-  }
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2cnd5bW1zZ3dzdHZ5cW1zY3V5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3NjAxODksImV4cCI6MjA3OTMzNjE4OX0.XNJOD5MzOaM8u_tRuvXZvx2Q_mHUTbk-mAbUFnoU3H4';
   const { createClient } = supabase;
   const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
-
-  function sanitizeHTML(value) {
-    const tmp = document.createElement('div');
-    tmp.textContent = value;
-    return tmp.innerHTML;
-  }
 
   let chartInstance = null;
 
@@ -102,59 +80,28 @@
     '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE'
   ];
 
-  // Fonctions pour autocomplétion
-  async function updateArtistSuggestions(value) {
-    if (!value) return;
-    const { data } = await sb.from('artists').select('name').ilike('name', `${value}%`).limit(10);
-    const datalist = document.getElementById('artist-list');
-    datalist.innerHTML = '';
-    data.forEach(item => {
-      const option = document.createElement('option');
-      option.value = item.name;
-      datalist.appendChild(option);
-    });
-  }
-
-  async function updateTitleSuggestions(value) {
-    if (!value) return;
-    const { data } = await sb.from('tracks').select('name').ilike('name', `${value}%`).limit(10);
-    const datalist = document.getElementById('title-list');
-    datalist.innerHTML = '';
-    data.forEach(item => {
-      const option = document.createElement('option');
-      option.value = item.name;
-      datalist.appendChild(option);
-    });
-  }
-
   // Charger les données par défaut
   loadData();
 
   // Écouteurs pour les filtres
-  document.getElementById('artist-filter').addEventListener('input', (e) => {
-    updateArtistSuggestions(e.target.value);
-    loadData();
-  });
-  document.getElementById('title-filter').addEventListener('input', (e) => {
-    updateTitleSuggestions(e.target.value);
-    loadData();
-  });
+  document.getElementById('artist-filter').addEventListener('input', loadData);
+  document.getElementById('title-filter').addEventListener('input', loadData);
 
   async function loadData() {
     const artistFilter = document.getElementById('artist-filter').value.trim();
     const titleFilter = document.getElementById('title-filter').value.trim();
 
-    let query = sb.from('listening_history').select('played_at, user_id, users(display_name)');
+    let query = sb.from('listening_history').select('played_at, user_id');
 
     if (artistFilter) {
       // Jointure pour filtrer par artiste
       query = sb.from('listening_history')
-        .select('played_at, user_id, users(display_name), tracks!inner(artists!inner(name))')
+        .select('played_at, user_id, tracks!inner(artists!inner(name))')
         .ilike('tracks.artists.name', `%${artistFilter}%`);
     } else if (titleFilter) {
       // Jointure pour filtrer par titre
       query = sb.from('listening_history')
-        .select('played_at, user_id, users(display_name), tracks!inner(name)')
+        .select('played_at, user_id, tracks!inner(name)')
         .ilike('tracks.name', `%${titleFilter}%`);
     }
 
@@ -176,14 +123,13 @@
   }
 
   function processAndRender(data) {
-    // Grouper par display_name (ou user_id si pas disponible)
+    // Grouper par user_id
     const users = {};
     data.forEach(play => {
-      const maybeName = play.users?.display_name || play.user_id;
-      const userName = sanitizeHTML(maybeName);
-      if (!users[userName]) users[userName] = {};
+      const userId = play.user_id;
+      if (!users[userId]) users[userId] = {};
       const date = new Date(play.played_at).toISOString().split('T')[0];
-      users[userName][date] = (users[userName][date] || 0) + 1;
+      users[userId][date] = (users[userId][date] || 0) + 1;
     });
 
     // Toutes les dates
@@ -195,9 +141,9 @@
 
     // Calcul cumulatif pour chaque user
     const datasets = [];
-    const userNames = Object.keys(users);
-    userNames.forEach((userName, index) => {
-      const userPlays = users[userName];
+    const userIds = Object.keys(users);
+    userIds.forEach((userId, index) => {
+      const userPlays = users[userId];
       let cum = 0;
       const cumData = [];
       sortedDates.forEach(date => {
@@ -205,7 +151,7 @@
         cumData.push(cum);
       });
       datasets.push({
-        label: userName,
+        label: userId,  // Ou nom si disponible
         data: cumData,
         borderColor: colors[index % colors.length],
         backgroundColor: colors[index % colors.length] + '20',  // Transparence
@@ -240,4 +186,5 @@
   }
 </script>
 </body>
-</html></content
+</html></content>
+<parameter name="filePath">c:\Users\Gaëtan\Documents\GitHub\stats-spotify\comparaison.html
