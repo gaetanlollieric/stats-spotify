@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <title>Détail du titre - Spotify Stats</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     :root {
       --spotify-green:#1ED760;
@@ -131,18 +130,6 @@
       margin-left:4px;
     }
     .similar-btn:hover { filter:brightness(1.08); }
-
-    /* Chart styles */
-    .chart-container {
-      margin-top: 30px;
-      background: var(--bg-elevated);
-      border-radius: var(--radius-lg);
-      border: 1px solid var(--border-subtle);
-      padding: 20px;
-    }
-    .chart-container h2 {
-      margin-bottom: 20px;
-    }
   </style>
 </head>
 <body>
@@ -162,11 +149,6 @@
   <div class="card" id="similar-card" style="display:none; margin-top:20px;">
     <h2>🎧 Titres similaires</h2>
     <div id="similar-list"></div>
-  </div>
-
-  <div class="chart-container">
-    <h2>📈 Évolution des streams cumulés</h2>
-    <canvas id="streamsChart"></canvas>
   </div>
 </div>
 
@@ -190,7 +172,6 @@
     loadTrack();
     loadTrackStats();
     loadSimilarTracks();
-    loadChartData();
   }
 
   async function spotifyFetch(url) {
@@ -358,112 +339,6 @@
     } else {
       alert("Impossible d'ajouter à la file (code " + res.status + ").");
     }
-  }
-
-  // --- Chart data ---
-  async function loadChartData() {
-    // Récupération des données depuis Supabase
-    const { data: allData, error } = await sb
-      .from('listening_history')  // Table principale
-      .select('played_at, user_id')  // Pas de jointure, juste ces colonnes
-      .eq('track_id', trackId)  // Filtre sur le track_id (Spotify ID)
-      .order('played_at', { ascending: true });  // Tri par date
-
-    if (error) {
-      console.error('Error loading data:', error);
-      return;
-    }
-
-    if (!allData || !allData.length) {
-      console.log('No data for this track');
-      return;
-    }
-
-    // Séparer mes données et celles des amis
-    const myUserId = mySpotifyId;  // Variable pour mon user_id (à renseigner si nécessaire)
-    const personalPlays = {};
-    const friendsPlays = {};
-
-    allData.forEach(play => {
-      const dateObj = new Date(play.played_at);
-      const date = dateObj.toISOString().split('T')[0];  // YYYY-MM-DD
-      const formattedDate = dateObj.toLocaleDateString('fr-FR');  // Format français
-      if (play.user_id === myUserId) {
-        personalPlays[date] = (personalPlays[date] || 0) + 1;
-      } else {
-        friendsPlays[date] = (friendsPlays[date] || 0) + 1;
-      }
-    });
-
-    // Toutes les dates uniques, triées
-    const allDates = new Set([...Object.keys(personalPlays), ...Object.keys(friendsPlays)]);
-    const sortedDates = Array.from(allDates).sort();
-
-    // Calcul cumulatif
-    let personalCum = 0;
-    let friendsCum = 0;
-    const personalCumData = [];
-    const friendsCumData = [];
-    const formattedLabels = [];
-
-    sortedDates.forEach(date => {
-      personalCum += personalPlays[date] || 0;
-      friendsCum += friendsPlays[date] || 0;
-      personalCumData.push(personalCum);
-      friendsCumData.push(friendsCum);
-      formattedLabels.push(new Date(date).toLocaleDateString('fr-FR'));
-    });
-
-    renderChart(formattedLabels, personalCumData, friendsCumData);
-  }
-
-  function renderChart(labels, personalData, friendsData) {
-    const ctx = document.getElementById('streamsChart').getContext('2d');
-    new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: labels,
-        datasets: [{
-          label: 'Mes streams',
-          data: personalData,
-          borderColor: '#1DB954',  // Couleur verte Spotify
-          backgroundColor: 'rgba(29, 185, 84, 0.1)',
-          fill: true,
-          tension: 0.1
-        }, {
-          label: 'Streams amis',
-          data: friendsData,
-          borderColor: '#1E90FF',  // Bleu
-          backgroundColor: 'rgba(30, 144, 255, 0.1)',
-          fill: true,
-          tension: 0.1
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: {
-            display: true,
-            position: 'top'
-          }
-        },
-        scales: {
-          x: {
-            title: {
-              display: true,
-              text: 'Date'
-            }
-          },
-          y: {
-            title: {
-              display: true,
-              text: 'Streams cumulés'
-            },
-            beginAtZero: true
-          }
-        }
-      }
-    });
   }
 </script>
 </body>
