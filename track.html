@@ -362,66 +362,59 @@
 
   // --- Chart data ---
   async function loadChartData() {
-    // Personal data from Supabase
-    const { data: personalData, error } = await sb
-      .from('listening_history')  // Remplacez par le nom de votre table si différent
-      .select('played_at')
-      .eq('user_id', mySpotifyId)
-      .eq('tracks.spotify_id', trackId)
-      .order('played_at', { ascending: true });
+    // Récupération des données depuis Supabase
+    const { data: allData, error } = await sb
+      .from('listening_history')  // Table principale
+      .select('played_at, user_id')  // Pas de jointure, juste ces colonnes
+      .eq('track_id', trackId)  // Filtre sur le track_id (Spotify ID)
+      .order('played_at', { ascending: true });  // Tri par date
 
     if (error) {
-      console.error('Error loading personal data:', error);
+      console.error('Error loading data:', error);
       return;
     }
 
-    // Aggregate personal plays by date
+    if (!allData || !allData.length) {
+      console.log('No data for this track');
+      return;
+    }
+
+    // Séparer mes données et celles des amis
+    const myUserId = mySpotifyId;  // Variable pour mon user_id (à renseigner si nécessaire)
     const personalPlays = {};
-    personalData.forEach(play => {
-      const date = new Date(play.played_at).toISOString().split('T')[0];
-      personalPlays[date] = (personalPlays[date] || 0) + 1;
-    });
-
-    // Friends data from Supabase (assume friends have different user_ids)
-    // Pour simplifier, supposons que les amis sont dans la même table avec user_id différent
-    // Vous pouvez ajuster la requête pour filtrer les amis
-    const { data: friendsDataRaw, error: friendsError } = await sb
-      .from('listening_history')  // Même table
-      .select('played_at, user_id')
-      .neq('user_id', mySpotifyId)  // Exclure soi-même
-      .eq('tracks.spotify_id', trackId)
-      .order('played_at', { ascending: true });
-
-    if (friendsError) {
-      console.error('Error loading friends data:', friendsError);
-      return;
-    }
-
-    // Aggregate friends plays by date
     const friendsPlays = {};
-    friendsDataRaw.forEach(play => {
-      const date = new Date(play.played_at).toISOString().split('T')[0];
-      friendsPlays[date] = (friendsPlays[date] || 0) + 1;
+
+    allData.forEach(play => {
+      const dateObj = new Date(play.played_at);
+      const date = dateObj.toISOString().split('T')[0];  // YYYY-MM-DD
+      const formattedDate = dateObj.toLocaleDateString('fr-FR');  // Format français
+      if (play.user_id === myUserId) {
+        personalPlays[date] = (personalPlays[date] || 0) + 1;
+      } else {
+        friendsPlays[date] = (friendsPlays[date] || 0) + 1;
+      }
     });
 
-    // Combine dates
+    // Toutes les dates uniques, triées
     const allDates = new Set([...Object.keys(personalPlays), ...Object.keys(friendsPlays)]);
     const sortedDates = Array.from(allDates).sort();
 
-    // Cumulative
+    // Calcul cumulatif
     let personalCum = 0;
     let friendsCum = 0;
     const personalCumData = [];
     const friendsCumData = [];
+    const formattedLabels = [];
 
     sortedDates.forEach(date => {
       personalCum += personalPlays[date] || 0;
       friendsCum += friendsPlays[date] || 0;
       personalCumData.push(personalCum);
       friendsCumData.push(friendsCum);
+      formattedLabels.push(new Date(date).toLocaleDateString('fr-FR'));
     });
 
-    renderChart(sortedDates, personalCumData, friendsCumData);
+    renderChart(formattedLabels, personalCumData, friendsCumData);
   }
 
   function renderChart(labels, personalData, friendsData) {
@@ -440,8 +433,8 @@
         }, {
           label: 'Streams amis',
           data: friendsData,
-          borderColor: '#A7A7A7',  // Gris
-          backgroundColor: 'rgba(167, 167, 167, 0.1)',
+          borderColor: '#1E90FF',  // Bleu
+          backgroundColor: 'rgba(30, 144, 255, 0.1)',
           fill: true,
           tension: 0.1
         }]
