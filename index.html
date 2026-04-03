@@ -3,6 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://kvrwymmsgwstvyqmscuy.supabase.co https://api.spotify.com; img-src 'self' data: https://i.scdn.co; style-src 'self' 'unsafe-inline';">
     <title>Spotify Stats</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -416,10 +417,19 @@
     const clientId = '1f8e5a30d7d4470aa41dd7ba69e4a94f';
     const redirectUri = 'https://gaetanlollieric.github.io/stats-spotify/index.html';
     const SUPABASE_URL = 'https://kvrwymmsgwstvyqmscuy.supabase.co'; 
-    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2cnd5bW1zZ3dzdHZ5cW1zY3V5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3NjAxODksImV4cCI6MjA3OTMzNjE4OX0.XNJOD5MzOaM8u_tRuvXZvx2Q_mHUTbk-mAbUFnoU3H4'; 
+    const SUPABASE_KEY = localStorage.getItem('supabase_anon_key');
+    if (!SUPABASE_KEY) {
+      console.error("Supabase clé non trouvée : définis 'supabase_anon_key' dans le localStorage ou utilise un backend sécurisé");
+    }
 
     const { createClient } = supabase;
     const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    function sanitizeHTML(value) {
+      const tmp = document.createElement('div');
+      tmp.textContent = value;
+      return tmp.innerHTML;
+    }
        const scopes = [
       'user-read-private',
       'user-read-email',
@@ -802,12 +812,14 @@
             sortedTracks.forEach(([key, c]) => {
                 const [name, artist] = key.split('###');
                 const trackId = trackInfos[key];
+                const safeName = sanitizeHTML(name || 'Titre inconnu');
+                const safeArtist = sanitizeHTML(artist || 'Inconnu');
         
                 tbody.innerHTML += `
                     <tr ${trackId ? `onclick="window.location.href='track.html?track_id=${encodeURIComponent(trackId)}'"` : ''} 
                         style="cursor:${trackId ? 'pointer' : 'default'};">
-                        <td><strong>${name}</strong></td>
-                        <td>${artist || 'Inconnu'}</td>
+                        <td><strong>${safeName}</strong></td>
+                        <td>${safeArtist}</td>
                         <td><span class="count-badge">${c}</span></td>
                     </tr>
                 `;
@@ -1044,8 +1056,20 @@
         const h = { Authorization: `Bearer ${token}` };
         const [aR, tR] = await Promise.all([ fetch(`https://api.spotify.com/v1/me/top/artists?time_range=${range}&limit=10`, {headers:h}), fetch(`https://api.spotify.com/v1/me/top/tracks?time_range=${range}&limit=10`, {headers:h}) ]);
         const a = await aR.json(); const t = await tR.json();
-        const al = document.getElementById('api-artists'); al.innerHTML=''; if(a.items) a.items.forEach(i => al.innerHTML+=`<li>${i.name}</li>`);
-        const tl = document.getElementById('api-tracks'); tl.innerHTML=''; if(t.items) t.items.forEach(i => tl.innerHTML+=`<li>${i.name} - <span style="color:#3b82f6">${i.artists[0].name}</span></li>`);
+        const al = document.getElementById('api-artists');
+        al.innerHTML = '';
+        if (a.items) a.items.forEach(i => {
+            const safeArtistName = sanitizeHTML(i.name || '');
+            al.insertAdjacentHTML('beforeend', `<li>${safeArtistName}</li>`);
+        });
+
+        const tl = document.getElementById('api-tracks');
+        tl.innerHTML = '';
+        if (t.items) t.items.forEach(i => {
+            const safeTrackName = sanitizeHTML(i.name || '');
+            const safeArtistName = sanitizeHTML(i.artists?.[0]?.name || '');
+            tl.insertAdjacentHTML('beforeend', `<li>${safeTrackName} - <span style="color:#3b82f6">${safeArtistName}</span></li>`);
+        });
     }
 
 
