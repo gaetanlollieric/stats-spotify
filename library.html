@@ -2,7 +2,6 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://kvrwymmsgwstvyqmscuy.supabase.co https://api.spotify.com; img-src 'self' data: https://i.scdn.co; style-src 'self' 'unsafe-inline';">
     <title>Ma Bibliothèque - Spotify Stats</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
@@ -119,18 +118,9 @@
 <script>
     // --- CONFIG SUPABASE ---
     const SUPABASE_URL = 'https://kvrwymmsgwstvyqmscuy.supabase.co'; 
-    const SUPABASE_KEY = localStorage.getItem('supabase_anon_key');
-    if (!SUPABASE_KEY) {
-      console.error("Supabase clé non trouvée : définis 'supabase_anon_key' dans le localStorage ou utilise un backend sécurisé");
-    }
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2cnd5bW1zZ3dzdHZ5cW1zY3V5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3NjAxODksImV4cCI6MjA3OTMzNjE4OX0.XNJOD5MzOaM8u_tRuvXZvx2Q_mHUTbk-mAbUFnoU3H4'; 
     const { createClient } = supabase;
     const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
-
-    function sanitizeHTML(value) {
-      const tmp = document.createElement('div');
-      tmp.textContent = value;
-      return tmp.innerHTML;
-    }
 
     // --- VARIABLES GLOBALES ---
     let allArtists = [];        // Tous les artistes depuis Supabase
@@ -243,16 +233,14 @@
             const rankDisplay = currentSort === 'count' ? `<div class="rank-badge">#${globalIndex}</div>` : '';
             
             // Image fallback (initiales)
-            const safeName = sanitizeHTML(a.name || 'Artiste inconnu');
-            const safeCount = Number(a.count || 0);
             const fallbackUrl = `https://ui-avatars.com/api/?background=333&color=1ED760&font-size=0.4&name=${encodeURIComponent(a.name)}`;
-            const displayImg = sanitizeHTML(a.image || fallbackUrl);
+            const displayImg = a.image || fallbackUrl;
 
             card.innerHTML = `
-                <img src="${displayImg}" data-name="${safeName}" alt="${safeName}" class="artist-avatar" loading="lazy">
+                <img src="${displayImg}" data-name="${a.name}" alt="${a.name}" class="artist-avatar" loading="lazy">
                 <div class="artist-info">
-                    <span class="artist-name">${safeName}</span>
-                    <span class="artist-count">${safeCount} écoutes</span>
+                    <span class="artist-name">${a.name}</span>
+                    <span class="artist-count">${a.count} écoutes</span>
                 </div>
                 ${rankDisplay}
             `;
