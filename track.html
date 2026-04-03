@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <title>Détail du titre - Spotify Stats</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     :root {
       --spotify-green:#1ED760;
@@ -130,6 +131,18 @@
       margin-left:4px;
     }
     .similar-btn:hover { filter:brightness(1.08); }
+
+    /* Chart styles */
+    .chart-container {
+      margin-top: 30px;
+      background: var(--bg-elevated);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border-subtle);
+      padding: 20px;
+    }
+    .chart-container h2 {
+      margin-bottom: 20px;
+    }
   </style>
 </head>
 <body>
@@ -149,6 +162,11 @@
   <div class="card" id="similar-card" style="display:none; margin-top:20px;">
     <h2>🎧 Titres similaires</h2>
     <div id="similar-list"></div>
+  </div>
+
+  <div class="chart-container">
+    <h2>📈 Évolution des streams cumulés</h2>
+    <canvas id="streamsChart"></canvas>
   </div>
 </div>
 
@@ -172,6 +190,7 @@
     loadTrack();
     loadTrackStats();
     loadSimilarTracks();
+    loadChartData();
   }
 
   async function spotifyFetch(url) {
@@ -339,6 +358,119 @@
     } else {
       alert("Impossible d'ajouter à la file (code " + res.status + ").");
     }
+  }
+
+  // --- Chart data ---
+  async function loadChartData() {
+    // Personal data from Supabase
+    const { data: personalData, error } = await sb
+      .from('listening_history')  // Remplacez par le nom de votre table si différent
+      .select('played_at')
+      .eq('user_id', mySpotifyId)
+      .eq('tracks.spotify_id', trackId)
+      .order('played_at', { ascending: true });
+
+    if (error) {
+      console.error('Error loading personal data:', error);
+      return;
+    }
+
+    // Aggregate personal plays by date
+    const personalPlays = {};
+    personalData.forEach(play => {
+      const date = new Date(play.played_at).toISOString().split('T')[0];
+      personalPlays[date] = (personalPlays[date] || 0) + 1;
+    });
+
+    // Friends data from Supabase (assume friends have different user_ids)
+    // Pour simplifier, supposons que les amis sont dans la même table avec user_id différent
+    // Vous pouvez ajuster la requête pour filtrer les amis
+    const { data: friendsDataRaw, error: friendsError } = await sb
+      .from('listening_history')  // Même table
+      .select('played_at, user_id')
+      .neq('user_id', mySpotifyId)  // Exclure soi-même
+      .eq('tracks.spotify_id', trackId)
+      .order('played_at', { ascending: true });
+
+    if (friendsError) {
+      console.error('Error loading friends data:', friendsError);
+      return;
+    }
+
+    // Aggregate friends plays by date
+    const friendsPlays = {};
+    friendsDataRaw.forEach(play => {
+      const date = new Date(play.played_at).toISOString().split('T')[0];
+      friendsPlays[date] = (friendsPlays[date] || 0) + 1;
+    });
+
+    // Combine dates
+    const allDates = new Set([...Object.keys(personalPlays), ...Object.keys(friendsPlays)]);
+    const sortedDates = Array.from(allDates).sort();
+
+    // Cumulative
+    let personalCum = 0;
+    let friendsCum = 0;
+    const personalCumData = [];
+    const friendsCumData = [];
+
+    sortedDates.forEach(date => {
+      personalCum += personalPlays[date] || 0;
+      friendsCum += friendsPlays[date] || 0;
+      personalCumData.push(personalCum);
+      friendsCumData.push(friendsCum);
+    });
+
+    renderChart(sortedDates, personalCumData, friendsCumData);
+  }
+
+  function renderChart(labels, personalData, friendsData) {
+    const ctx = document.getElementById('streamsChart').getContext('2d');
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Mes streams',
+          data: personalData,
+          borderColor: '#1DB954',  // Couleur verte Spotify
+          backgroundColor: 'rgba(29, 185, 84, 0.1)',
+          fill: true,
+          tension: 0.1
+        }, {
+          label: 'Streams amis',
+          data: friendsData,
+          borderColor: '#A7A7A7',  // Gris
+          backgroundColor: 'rgba(167, 167, 167, 0.1)',
+          fill: true,
+          tension: 0.1
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top'
+          }
+        },
+        scales: {
+          x: {
+            title: {
+              display: true,
+              text: 'Date'
+            }
+          },
+          y: {
+            title: {
+              display: true,
+              text: 'Streams cumulés'
+            },
+            beginAtZero: true
+          }
+        }
+      }
+    });
   }
 </script>
 </body>
