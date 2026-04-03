@@ -2,6 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://kvrwymmsgwstvyqmscuy.supabase.co https://api.spotify.com; img-src 'self' data: https://i.scdn.co; style-src 'self' 'unsafe-inline';">
   <title>Détail du titre - Spotify Stats</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -173,9 +174,18 @@
 <script>
   // --- CONFIG SUPABASE (identique aux autres pages) ---
   const SUPABASE_URL = 'https://kvrwymmsgwstvyqmscuy.supabase.co';
-  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2cnd5bW1zZ3dzdHZ5cW1zY3V5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3NjAxODksImV4cCI6MjA3OTMzNjE4OX0.XNJOD5MzOaM8u_tRuvXZvx2Q_mHUTbk-mAbUFnoU3H4';
+  const SUPABASE_KEY = localStorage.getItem('supabase_anon_key');
+  if (!SUPABASE_KEY) {
+    console.error("Supabase clé non trouvée : définis 'supabase_anon_key' dans le localStorage ou utilise un backend sécurisé");
+  }
   const { createClient } = supabase;
   const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  function sanitizeHTML(value) {
+    const tmp = document.createElement('div');
+    tmp.textContent = value;
+    return tmp.innerHTML;
+  }
 
   const spotifyToken = localStorage.getItem('spotify_token');
   const mySpotifyId = localStorage.getItem('my_spotify_id');
@@ -210,14 +220,14 @@
       return;
     }
 
-    const name = t.name;
-    const artists = t.artists.map(a => a.name).join(', ');
-    const album = t.album?.name || '';
-    const cover = t.album?.images?.[0]?.url || '';
+    const name = sanitizeHTML(t.name);
+    const artists = sanitizeHTML(t.artists.map(a => a.name).join(', '));
+    const album = sanitizeHTML(t.album?.name || '');
+    const cover = sanitizeHTML(t.album?.images?.[0]?.url || '');
     const durationMs = t.duration_ms || 0;
-    const preview = t.preview_url;
+    const preview = sanitizeHTML(t.preview_url || '');
     const explicit = t.explicit;
-    const popularity = t.popularity;
+    const popularity = Number(t.popularity || 0);
     const marketsCount = (t.available_markets || []).length;
 
     const mins = Math.floor(durationMs / 60000);

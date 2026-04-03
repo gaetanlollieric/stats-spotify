@@ -3,6 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://kvrwymmsgwstvyqmscuy.supabase.co https://api.spotify.com; img-src 'self' data: https://i.scdn.co; style-src 'self' 'unsafe-inline';">
     <title>Détail Artiste - Spotify Stats</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -216,9 +217,18 @@
 <script>
     // --- CONFIG SUPABASE + SPOTIFY ---
     const SUPABASE_URL = 'https://kvrwymmsgwstvyqmscuy.supabase.co'; 
-    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2cnd5bW1zZ3dzdHZ5cW1zY3V5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3NjAxODksImV4cCI6MjA3OTMzNjE4OX0.XNJOD5MzOaM8u_tRuvXZvx2Q_mHUTbk-mAbUFnoU3H4';
+    const SUPABASE_KEY = localStorage.getItem('supabase_anon_key');
+    if (!SUPABASE_KEY) {
+      console.error("Supabase clé non trouvée : définis 'supabase_anon_key' dans le localStorage ou utilise un backend sécurisé");
+    }
     const { createClient } = supabase;
     const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    function sanitizeHTML(value) {
+      const tmp = document.createElement('div');
+      tmp.textContent = value;
+      return tmp.innerHTML;
+    }
 
     const spotifyToken = localStorage.getItem('spotify_token');
     const mySpotifyId = localStorage.getItem('my_spotify_id');
@@ -399,24 +409,27 @@
             const card = document.createElement('div');
             card.className = 'album-card';
 
-            const coverHtml = albumCover 
-                ? `<img src="${albumCover}" alt="${albumName}" class="album-cover" loading="lazy">`
-                : `<div class="album-cover"></div>`;
-
-            // Bouton Play pour cet album
+            const safeAlbumName = sanitizeHTML(albumName || 'Album inconnu');
+            const safeAlbumCover = sanitizeHTML(albumCover);
+            const safeAlbumYear = sanitizeHTML(albumYear || 'Année inconnue');
             const albumUris = enrichedTracks.map(t => t.uri).filter(Boolean);
+            const safeUris = albumUris.map(u => encodeURIComponent(u));
+
+            const coverHtml = safeAlbumCover
+                ? `<img src="${safeAlbumCover}" alt="${safeAlbumName}" class="album-cover" loading="lazy">`
+                : `<div class="album-cover"></div>`;
 
             card.innerHTML = `
                 <div class="album-top">
                     ${coverHtml}
                     <div class="album-header">
-                        <div class="album-title">${albumName}</div>
+                        <div class="album-title">${safeAlbumName}</div>
                         <div class="album-meta">
-                            ${albumYear || 'Année inconnue'} • ${enrichedTracks.length} titres<br>
+                            ${safeAlbumYear} • ${enrichedTracks.length} titres<br>
                             ${totalAlbumPlays} écoutes • ${nbTracksListened} titres écoutés
                         </div>
                         <div class="album-actions">
-                            ${albumUris.length ? `<button class="play-btn" data-uris="${albumUris.join(',')}">▶️ Lancer cet album</button>` : ''}
+                            ${albumUris.length ? `<button class="play-btn" data-uris="${safeUris.join(',')}">▶️ Lancer cet album</button>` : ''}
                         </div>
                     </div>
                 </div>
@@ -438,7 +451,7 @@
                                 <tr ${onclick} style="cursor:${t.id ? 'pointer' : 'default'};">
                                     <td>${idx+1}</td>
                                     <td class="track-name">
-                                        ${t.name}
+                                        ${sanitizeHTML(t.name)}
                                         ${isNew ? '<span class="new-track">Jamais écouté</span>' : ''}
                                     </td>
                                     <td class="listen-count">${t.count}</td>
